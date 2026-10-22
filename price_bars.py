@@ -24,6 +24,7 @@ MEASURED 2026-10-22: 0 rows below the cutoff (2022-09-21); Best Settings asks ba
 probe, never reached the file.
 """
 import atexit
+import bisect
 import csv
 import datetime as dt
 import gzip
@@ -34,7 +35,7 @@ import sys
 
 log = logging.getLogger(__name__)
 
-_STATE = {"dir": None, "by": None, "meta": None, "count": 0, "newest": "", "current": None}
+_STATE = {"dir": None, "by": None, "count": 0, "newest": "", "current": None}
 
 
 def mode() -> str:
@@ -43,20 +44,24 @@ def mode() -> str:
 
 
 def _load(dir_path):
-    """{ticker: [(bar_date, high, low, close, volume), ...] in date order}, the metadata, the row count and the
-    newest updated_at (text, microseconds -- sorts as time)."""
-    with open(os.path.join(dir_path, "price_bars.meta.json"), encoding="utf-8") as fh:
+    """{ticker: [(bar_date, high, low, close, volume), ...] in date order}, the row count and the newest
+    updated_at (text, microseconds -- sorts as time). The file's format is bars_file's (its names, columns and
+    cell parser); grouped by ticker here rather than through bars_file.read, which keys every row by
+    (ticker, date) -- 1.9 million keys this reader does not need."""
+    import bars_file
+    with open(os.path.join(dir_path, bars_file.META_NAME), encoding="utf-8") as fh:
         meta = json.load(fh)
-    by, count, newest = {}, 0, ""
-    num = lambda s: None if s == "" else float(s)
-    with gzip.open(os.path.join(dir_path, "price_bars.csv.gz"), "rt", encoding="utf-8", newline="") as fh:
+    by, count, newest, dates = {}, 0, "", {}
+    with gzip.open(os.path.join(dir_path, bars_file.DATA_NAME), "rt", encoding="utf-8", newline="") as fh:
         rd = csv.reader(fh)
-        head = next(rd)
-        if head[:7] != ["ticker", "bar_date", "open", "high", "low", "close", "volume"] or head[9] != "updated_at":
+        if next(rd) != list(bars_file.COLUMNS):
             raise ValueError("price bars file has unexpected columns")
-        for tk, bd, _o, hi, lo, cl, vol, _src, _chk, upd in rd:
-            by.setdefault(tk, []).append((dt.date.fromisoformat(bd), num(hi), num(lo), num(cl),
-                                          None if vol == "" else int(vol)))
+        for cells in rd:
+            tk, bd, _o, hi, lo, cl, vol, _src, _chk, upd = bars_file._row_in(cells)
+            day = dates.get(bd)
+            if day is None:   # ~1,000 distinct dates across 1.9 million rows: parse each once
+                day = dates[bd] = dt.date.fromisoformat(bd)
+            by.setdefault(tk, []).append((day, hi, lo, cl, vol))
             count += 1
             if upd > newest:
                 newest = upd
@@ -64,17 +69,17 @@ def _load(dir_path):
         raise ValueError(f"price bars file holds {count} rows, its metadata says {meta.get('rows')}")
     for rows in by.values():
         rows.sort(key=lambda r: r[0])
-    return by, meta, count, newest
+    return by, count, newest
 
 
 def _ready(db) -> bool:
     """Loaded and CURRENT. Loads once per process and asks the database once per process."""
     dir_path = os.environ.get("PRICE_BARS_DIR")
     if _STATE["dir"] != dir_path:
-        _STATE.update(dir=dir_path, by=None, meta=None, current=None)
+        _STATE.update(dir=dir_path, by=None, current=None)
         try:
-            by, meta, count, newest = _load(dir_path)
-            _STATE.update(by=by, meta=meta, count=count, newest=newest)
+            by, count, newest = _load(dir_path)
+            _STATE.update(by=by, count=count, newest=newest)
             log.info("price bars file loaded: %s rows, newest stamp %s", f"{count:,}", newest)
         except Exception as exc:
             log.warning("price bars file unusable, reading the database: %s", exc)
@@ -104,7 +109,8 @@ def _from_file(items, back):
         start = d0 - back
         if isinstance(start, dt.datetime):
             start = start.date()
-        rows = [r for r in _STATE["by"].get(tk, ()) if r[0] >= start]
+        bars = _STATE["by"].get(tk, ())
+        rows = bars[bisect.bisect_left(bars, start, key=lambda r: r[0]):]   # date order (_load)
         if rows:
             out[tk] = rows
     return out
@@ -114,10 +120,10 @@ def _differences(db_out, file_out, limit=5):
     diffs = []
     for tk in sorted(set(db_out) | set(file_out)):
         a, b = db_out.get(tk, []), file_out.get(tk, [])
-        if [tuple(r) for r in a] != [tuple(r) for r in b]:
+        first = next(((x, y) for x, y in zip(a, b) if tuple(x) != tuple(y)), None)
+        if first or len(a) != len(b):
             diffs.append(f"{tk}: database {len(a)} rows, file {len(b)} rows"
-                         + (f", first difference {next((x, y) for x, y in zip(a, b) if tuple(x) != tuple(y))}"
-                            if any(tuple(x) != tuple(y) for x, y in zip(a, b)) else ""))
+                         + (f", first difference {first}" if first else ""))
             if len(diffs) >= limit:
                 break
     return diffs

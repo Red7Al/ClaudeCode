@@ -42,7 +42,7 @@ def test_the_server_and_the_fetcher_agree_on_what_is_an_equity():
 # ── the endpoints serve the stored copy ───────────────────────────────────────────────────────────────
 
 def _stub_panel(monkeypatch, store_key, records):
-    monkeypatch.setitem(server._PANEL_CACHE, store_key, {"data": records, "ts": 9e18})
+    monkeypatch.setattr(server, "_stored_doc", lambda k: {"records": records} if k == store_key else None)
 
 
 def test_fundamentals_serves_the_precomputed_record(monkeypatch):

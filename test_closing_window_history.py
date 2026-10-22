@@ -73,3 +73,18 @@ def test_a_failed_fetch_leaves_the_database_answering(monkeypatch, tmp_path):
     assert price_bars.fetch_when_needed() is False
     import os
     assert "PRICE_BARS_DIR" not in os.environ
+
+
+def test_nothing_is_fetched_when_no_instrument_has_todays_bar(monkeypatch):
+    """Efficiency review 2026-10-22: the file was fetched and read before asking whether anything had a bar."""
+    seen = _wire(monkeypatch)
+    monkeypatch.setattr(cbc, "todays_bar", lambda t: None)
+    out = cbc.capture(["AAA", "BBB"], as_of=dt.date(2026, 10, 22), dry_run=True, db=_Db())
+    assert seen == {"fetch": 0, "bulk": []} and out["attempted"] == 2 and out["skipped"] == 2
+
+
+def test_only_instruments_with_todays_bar_are_read(monkeypatch):
+    seen = _wire(monkeypatch)
+    monkeypatch.setattr(cbc, "todays_bar", lambda t: ("2026-10-22", 2.1, 1.1, 2.0, 500.0) if t == "BBB" else None)
+    cbc.capture(["AAA", "BBB"], as_of=dt.date(2026, 10, 22), dry_run=True, db=_Db())
+    assert seen["bulk"] == [["BBB"]]

@@ -793,24 +793,53 @@ def acting_session(login: str = None):
 # instrument (a STANDING fact for the current balance — e.g. crypto minimums vs a small account), to be
 # summarised with its funding gap, not paged every cycle. ERROR = an exception (genuine missed trade).
 # Keyed by epic; (reason, needed_margin_gbp, available_gbp). Cleared when a real size is produced.
-LAST_SIZE_SKIP: dict = {}
-# (request thread, ticker) -> the reason place_hvf_order_from_sig refused that thread's order on size. Keyed
-# by thread so one user's request can never read another's refusal, which names that account's free margin
-# (security review 2026-10-22). order_skip_reason() reads and clears it.
-LAST_ORDER_SKIP: dict = {}
+#
+# PER THREAD (security review 2026-10-22). The web process serves every account, and an ACCOUNT_TOO_SMALL entry
+# names that account's free margin. With one dict per process, a second account sizing the same market between
+# another's write and read swapped the two refusals. Each writer and its reader run in the same thread (a web
+# request, a session run), so a store private to the thread is the same dict to them and invisible to anyone else.
+class _PerThread:
+    """A dict private to the calling thread (get / pop / [k] / [k] = v / in / clear)."""
+
+    def __init__(self):
+        self._local = _threading.local()
+
+    def _d(self):
+        d = getattr(self._local, "d", None)
+        if d is None:
+            d = self._local.d = {}
+        return d
+
+    def get(self, key, default=None):
+        return self._d().get(key, default)
+
+    def pop(self, key, default=None):
+        return self._d().pop(key, default)
+
+    def __getitem__(self, key):
+        return self._d()[key]
+
+    def __setitem__(self, key, value):
+        self._d()[key] = value
+
+    def __contains__(self, key):
+        return key in self._d()
+
+    def clear(self):
+        self._d().clear()
 
 
-def _order_skip_key(ticker):
-    return (_threading.get_ident(), ticker)
+LAST_SIZE_SKIP = _PerThread()
+# ticker -> the reason place_hvf_order_from_sig refused this thread's order on size; order_skip_reason() reads it.
+LAST_ORDER_SKIP = _PerThread()
+# epic -> IG's minimum deal size, from this thread's last calculate_position_size for it ("Create an order"
+# checks a typed volume against it before anything is sent to IG).
+LAST_MIN_SIZE = _PerThread()
 
 
-def order_skip_reason(ticker, clear_only=False):
-    """The reason THIS thread's last order for `ticker` was refused on size (and forget it); None if none."""
-    reason = LAST_ORDER_SKIP.pop(_order_skip_key(ticker), None)
-    return None if clear_only else reason
-# epic -> IG's minimum deal size, from the last calculate_position_size for it ("Create an order" checks a
-# typed volume against it before anything is sent to IG).
-LAST_MIN_SIZE: dict = {}
+def order_skip_reason(ticker):
+    """The reason this thread's last order for `ticker` was refused on size, and forget it; None if none."""
+    return LAST_ORDER_SKIP.pop(ticker, None)
 
 
 def calculate_position_size(epic: str, stop_distance: float,
@@ -3413,8 +3442,7 @@ def size_working_order(ticker: str, direction: str, entry, stop, target, profile
         epic = get_epic(ticker)
         if not epic:
             raise ValueError("no IG epic")
-        # LAST_SIZE_SKIP is per market and shared by every account in the process; an earlier account's
-        # entry (its free margin) must not describe THIS account's refusal (security review 2026-10-22).
+        # An earlier refusal for this market in this thread must not describe this one.
         LAST_SIZE_SKIP.pop(epic, None)
         # Align signal units → IG units BEFORE sizing: FX HVF levels come from
         # Yahoo (EURUSD 1.1539) while IG quotes points (11538.6). Sizing from the
@@ -3608,10 +3636,10 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         except (TypeError, ValueError):
             _ov = float("nan")
         if not (_ov > 0 and _ov != float("inf")):
-            LAST_ORDER_SKIP[_order_skip_key(ticker)] = f"{ticker}: the size {size_override!r} is not a positive number -- nothing sent to IG."
+            LAST_ORDER_SKIP[ticker] = f"{ticker}: the size {size_override!r} is not a positive number -- nothing sent to IG."
             return None
         if _min and _ov < _min:
-            LAST_ORDER_SKIP[_order_skip_key(ticker)] = (f"{ticker}: size {_ov:g} is below IG's minimum for this market ({_min:g}) "
+            LAST_ORDER_SKIP[ticker] = (f"{ticker}: size {_ov:g} is below IG's minimum for this market ({_min:g}) "
                                        f"-- nothing sent to IG.")
             return None
         log.info(f"{ticker}: size {_ov:g} entered by the user (calculated {size:g}, IG minimum {_min})")
@@ -3620,10 +3648,10 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
     if size <= 0:
         # Plain-English, context-aware reason from the single source (user 2026-06-26). A structural
         # ACCOUNT_TOO_SMALL / margin-deficit skip is summarised daily; a generic zero-size pages.
-        _reason = sized.get("reason") or describe_size_skip(ticker, epic)
+        _reason = sized["reason"]
         # For "Create an order": the page shows THIS reason, not whichever log line came last (owner
         # 2026-10-21 -- it showed notify's "occurrence #2 today, alert suppressed (deduped)" and no volume).
-        LAST_ORDER_SKIP[_order_skip_key(ticker)] = _reason
+        LAST_ORDER_SKIP[ticker] = _reason
         try:
             from notify import alert_missed_trade
             alert_missed_trade(ticker, direction, _reason, str(sig.get("primaries_fired") or ""))

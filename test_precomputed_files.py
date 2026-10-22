@@ -17,28 +17,39 @@ def _doc(rows, dataset=GEN, built_at=None):
     return {"dataset": dataset, "built_at": built_at or time.time(), "payload": {"rows": rows}}
 
 
+def _file(d, key, doc, revision=5):
+    (d / f"{key}.json").write_text(json.dumps({"store_key": key, "revision": revision, "doc": doc}), encoding="utf-8")
+
+
+def _clear():
+    for c in (server._REVISION_CACHE, server._STORED_DOC_CACHE, server._PRECOMPUTED_CACHE):
+        c.clear()
+
+
 @pytest.fixture
 def files(tmp_path, monkeypatch):
+    """The database is at revision 5; a file is used only when it carries that revision (CLAUDE.md: a file is
+    used only when its version matches the database's)."""
     monkeypatch.setattr(server, "_PRECOMPUTED_DIR", str(tmp_path))
     monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": GEN})
-    server._PRECOMPUTED_CACHE.clear()
+    _clear()
     db_reads = []
+    monkeypatch.setattr(web_store, "read_json_store_revision", lambda k: 5)
     monkeypatch.setattr(web_store, "load_json_store", lambda k: db_reads.append(k) or _doc(["from the database"]))
     yield tmp_path, db_reads
-    server._PRECOMPUTED_CACHE.clear()
+    _clear()
 
 
 def test_a_current_file_is_served_without_asking_the_database(files):
     d, db_reads = files
-    (d / "winners_rows_3y.json").write_text(json.dumps(_doc(["from the file"])), encoding="utf-8")
+    _file(d, "winners_rows_3y", _doc(["from the file"]))
     assert server._winners_stored(3) == {"rows": ["from the file"]}
     assert server._winners_stored(3) == {"rows": ["from the file"]} and db_reads == []
 
 
 def test_the_file_is_read_once_until_it_changes(files, monkeypatch):
     d, _ = files
-    f = d / "performance_rows_12m.json"
-    f.write_text(json.dumps(_doc(["a"])), encoding="utf-8")
+    _file(d, "performance_rows_12m", _doc(["a"]))
     opened = []
     real = open
     monkeypatch.setattr("builtins.open", lambda *a, **k: opened.append(a[0]) or real(*a, **k))
@@ -46,16 +57,27 @@ def test_the_file_is_read_once_until_it_changes(files, monkeypatch):
     assert len([p for p in opened if str(p).endswith("performance_rows_12m.json")]) == 1
 
 
-def test_a_file_from_an_earlier_scan_falls_back_to_the_database(files):
+def test_a_file_behind_the_database_falls_back_to_the_database(files):
     d, db_reads = files
-    (d / "winners_rows_1y.json").write_text(json.dumps(_doc(["old"], dataset="2026-10-21T18:30:00Z")), encoding="utf-8")
+    _file(d, "winners_rows_1y", _doc(["old"], dataset="2026-10-21T18:30:00Z"), revision=4)
     assert server._winners_stored(1) == {"rows": ["from the database"]} and db_reads == ["winners_rows_1y"]
+
+
+def test_an_out_of_date_stored_copy_is_fetched_once_per_revision_not_per_request(files, monkeypatch):
+    """Between a new scan and the next precompute both copies are out of date. The 7.27 MB document used to be
+    fetched from Supabase on EVERY request in that window; now once per revision (efficiency review 2026-10-22)."""
+    d, db_reads = files
+    monkeypatch.setattr(web_store, "load_json_store",
+                        lambda k: db_reads.append(k) or _doc(["old"], dataset="2026-10-21T18:30:00Z"))
+    assert server._winners_stored(3) is None and server._winners_stored(3) is None
+    assert db_reads == ["winners_rows_3y"]
 
 
 def test_no_file_or_a_damaged_one_reads_the_database(files):
     d, db_reads = files
     assert server._winners_stored(1) == {"rows": ["from the database"]}
     (d / "winners_rows_3y.json").write_text("{not json", encoding="utf-8")
+    server._PRECOMPUTED_CACHE.clear()
     assert server._winners_stored(3) == {"rows": ["from the database"]}
     assert db_reads == ["winners_rows_1y", "winners_rows_3y"]
 
@@ -165,6 +187,15 @@ def test_when_supabase_refuses_the_file_is_served(rev):
     _write(d, "thread_by_ticker", 4, {"records": {"ABC": ["from the file"]}})
     st["down"] = True
     assert server._thread_stored("ABC") == ["from the file"] and st["fetches"] == 0
+
+
+def test_a_refused_probe_is_not_asked_again_on_every_request(rev):
+    """During an outage every instrument view used to try the database again (efficiency review 2026-10-22)."""
+    d, st = rev
+    _write(d, "thread_by_ticker", 4, {"records": {"ABC": ["from the file"]}})
+    st["down"] = True
+    assert [server._thread_stored("ABC") for _ in range(3)] == [["from the file"]] * 3
+    assert st["probes"] == 1 and st["fetches"] == 0
 
 
 def test_both_nightly_writers_keep_their_files_on_ionos():

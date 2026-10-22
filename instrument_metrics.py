@@ -154,10 +154,10 @@ def _bars_bulk(tickers, end, db, chunk=200):
     # the query above is its fallback and its shadow reference. The upper bound is applied below, to both.
     import price_bars
     raw = price_bars.serve(db, [(t, start) for t in items], dt.timedelta(0), from_database)
-    out = {}
+    out, last = {}, str(end)[:10]
     for ticker, bars in raw.items():
         for bar_date, high, low, close, volume in bars:
-            if str(bar_date)[:10] > str(end)[:10]:
+            if str(bar_date)[:10] > last:
                 continue
             try:
                 vol = float(volume) if volume is not None and volume == volume else 0.0

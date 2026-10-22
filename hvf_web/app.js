@@ -5536,8 +5536,8 @@ async function createOrder(tk){
   if(r.entry==null||r.stop==null||r.target==null){alert(`${disp(tk)}: no entry/stop/target on screen to order from.`);return;}
   const dir=r.direction==="BULL"?"BUY":"SELL";
   const ex=v=>String(+v);   // the exact value sent -- f2's 2 dp misstates FX and sub-1 prices (code review)
-  const rows=[["Direction",dir],["Entry",ex(r.entry)],["Stop",ex(r.stop)],["Target",ex(r.target)],
-              ["R:R",r.rr!=null?(+r.rr).toFixed(1):"—"],["Triggered",r.trig_date?r.trig_date.slice(0,10):"not yet"]];
+  const rows=[["Direction",dir],["R:R",r.rr!=null?(+r.rr).toFixed(1):"—"],
+              ["Triggered",r.trig_date?r.trig_date.slice(0,10):"not yet"]];
   const levels={entry:r.entry,stop:r.stop,target:r.target};
   // An hourglass while IG is working, then the outcome stays on the panel (owner 2026-10-21: "an hourglass
   // would help to know processing is underway" / "a return status would help user know if it has gone in").
@@ -5549,7 +5549,7 @@ async function createOrder(tk){
     el.style.display="";el.style.borderColor=colour;el.innerHTML=`<b style="color:${colour}">${icon}</b> ${text}`;};
   const busy=t=>{if(btn){btn.disabled=true;btn.textContent=t;}document.body.style.cursor="wait";};
   const done=()=>{document.body.style.cursor="";if(btn){btn.disabled=false;btn.textContent="Create an order";}};
-  const esc=v=>String(v).replace(/</g,"&lt;");
+  const esc=_esc;
   // The volume BEFORE you confirm (owner 2026-10-21: "I want the option to override the volume"). The server
   // sizes it exactly as it would place it (your risk per trade, IG's minimum, the margin you have); whatever is
   // in the Size box when you press Create order is the size sent to IG. The server refuses one below IG's minimum.
@@ -5568,7 +5568,7 @@ async function createOrder(tk){
   // you press Create order is what is sent. The server checks they are in order for the direction.
   const want=await appConfirm(`Places a live IG working order on your own IG account. This is a real order. Change any number before you confirm. IG may widen the stop to its minimum distance; you can edit the order in IG. ${note}`,
                               {title:`Create a LIVE IG order for ${disp(tk)}?`,ok:"Create order",
-                               rows:rows.filter(([l])=>!["Entry","Stop","Target"].includes(l)),
+                               rows,
                                fields:[{key:"entry",label:"Entry",value:ex(r.entry)},{key:"stop",label:"Stop",value:ex(r.stop)},
                                        {key:"target",label:"Target",value:ex(r.target)},
                                        {key:"size",label:"Size",value:String(calc>0?calc:(min??"")),hint:min!=null?`IG minimum ${min}`:""}],

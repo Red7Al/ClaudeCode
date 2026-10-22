@@ -168,7 +168,8 @@ def _run_create_order(response, sel="NVDA", typed="null", size_answer=None):
         pytest.skip("node is not installed")
     js = open("hvf_web/app.js", encoding="utf-8").read()
     start = js.index("async function createOrder(")
-    fn = js[start:js.index("\n}\n", start) + 3]
+    esc = js.index("const _esc=")                      # the page's own escaper, which createOrder uses
+    fn = js[esc:js.index("\n", esc) + 1] + js[start:js.index("\n}\n", start) + 3]
     preamble = """
       const els={createorderbtn:{disabled:false,textContent:"Create an order"},orderstatus:{style:{},innerHTML:""}};
       const $=id=>els[id]; const seen=[]; const alerts=[];
@@ -247,13 +248,13 @@ def test_a_size_refusal_states_the_markets_own_minimum_and_the_money():
 def test_the_endpoint_reports_the_size_reason_not_the_last_log_line(wired, monkeypatch):
     import ig_shim, logging
     def refuse(sig, profile, session, mult, **kw):
-        ig_shim.LAST_ORDER_SKIP[ig_shim._order_skip_key("ARM")] = "ARM: account too small for IG's minimum deal. Its smallest allowed size 0.04"
+        ig_shim.LAST_ORDER_SKIP["ARM"] = "ARM: account too small for IG's minimum deal. Its smallest allowed size 0.04"
         logging.getLogger().info("Missed trade ARM BUY ACCOUNT_TOO_SMALL - occurrence #2 today, alert suppressed (deduped)")
         return None
     monkeypatch.setattr(ig_shim, "place_hvf_order_from_sig", refuse)
     r = _post({"entry": 280.5, "stop": 266.1, "target": 360.2})
     assert r.get_json()["error"].startswith("ARM: account too small"), r.get_json()
-    assert ig_shim._order_skip_key("ARM") not in ig_shim.LAST_ORDER_SKIP, "used once, never served to a later request"
+    assert "ARM" not in ig_shim.LAST_ORDER_SKIP, "used once, never served to a later request"
 
 
 def test_the_endpoint_returns_the_size_placed(wired, monkeypatch):
@@ -352,10 +353,41 @@ def test_another_requests_refusal_is_invisible_to_this_one():
     import threading
     import ig_shim
     def other():
-        ig_shim.LAST_ORDER_SKIP[ig_shim._order_skip_key("ARM")] = "ARM: only 167.40 is free"
+        ig_shim.LAST_ORDER_SKIP["ARM"] = "ARM: only 167.40 is free"
     t = threading.Thread(target=other)
     t.start(); t.join()
     try:
         assert ig_shim.order_skip_reason("ARM") is None
     finally:
         ig_shim.LAST_ORDER_SKIP.clear()
+
+
+def test_another_threads_size_refusal_is_invisible_here():
+    """Simplify/altitude review 2026-10-22: clearing the entry before sizing did not close the leak -- a second
+    account sizing the same market between this thread's write and read replaced the refusal with its own."""
+    import threading
+    import ig_shim
+    epic = "UA.D.ARM.DAILY.IP"
+    ig_shim.LAST_SIZE_SKIP[epic] = ("ACCOUNT_TOO_SMALL", 483.85, 9.99, 0.04)          # this account
+    t = threading.Thread(target=lambda: ig_shim.LAST_SIZE_SKIP.__setitem__(epic, ("ACCOUNT_TOO_SMALL", 483.85, 167.40, 0.04)))
+    t.start(); t.join()                                                                   # another account
+    try:
+        msg = ig_shim.describe_size_skip("ARM", epic)
+    finally:
+        ig_shim.LAST_SIZE_SKIP.pop(epic, None)
+    assert "£9.99" in msg and "167.40" not in msg
+
+
+def test_another_requests_log_line_is_never_this_users_error(wired, monkeypatch):
+    """The not-placed fallback is the last log line naming the ticker. A concurrent request's line for the same
+    market names that account's free margin (security/altitude review 2026-10-22)."""
+    import threading, logging
+    import ig_shim
+    def refuse(sig, profile, session, mult, **kw):
+        t = threading.Thread(target=lambda: logging.getLogger("ig_shim").warning(
+            "UA.D.ARM.DAILY.IP ARM: minimum margin cost (483.85) exceeds available funds (167.40) -- skipping trade"))
+        t.start(); t.join()
+        return None
+    monkeypatch.setattr(ig_shim, "place_hvf_order_from_sig", refuse)
+    r = _post({"entry": 280.5, "stop": 266.1, "target": 360.2})
+    assert "167.40" not in r.get_json()["error"], r.get_json()

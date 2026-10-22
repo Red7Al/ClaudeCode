@@ -2614,9 +2614,6 @@ def api_status():
 
 _FUND_STORE_KEY = "fundamentals_by_ticker"
 _BROKER_STORE_KEY = "broker_by_ticker"
-_PANEL_TTL = 3600
-_PANEL_CACHE = {_FUND_STORE_KEY: {"data": None, "ts": 0.0},
-                _BROKER_STORE_KEY: {"data": None, "ts": 0.0}}
 
 
 def _panel_records(store_key: str) -> dict:
@@ -2633,23 +2630,16 @@ def _panel_records(store_key: str) -> dict:
     it would take the whole worker down. run_fundamentals_precompute.py fetches both panels in GitHub
     Actions, where numpy works, exactly as the winners and performance payloads already do.
 
-    One document holds the whole universe (~0.9 MB measured), so it is read once per worker per hour
-    rather than per request.
+    One document holds the whole universe (~0.9 MB measured): _stored_doc serves the IONOS file when its
+    revision is the database's and holds the document per revision, so it is not fetched per request.
     """
-    slot = _PANEL_CACHE[store_key]
-    now = _time.time()
-    if slot["data"] is not None and now - slot["ts"] < _PANEL_TTL:
-        return slot["data"]
     try:
         doc = _stored_doc(store_key)
     except Exception as ex:
-        log.warning(f"{store_key} unavailable ({ex}); serving whatever is already cached")
-        return slot["data"] or {}
+        log.warning(f"{store_key} unavailable ({ex})")
+        return {}
     recs = doc.get("records") if isinstance(doc, dict) else None
-    if not isinstance(recs, dict):
-        return slot["data"] or {}
-    slot.update(data=recs, ts=now)
-    return recs
+    return recs if isinstance(recs, dict) else {}
 
 
 # Non-equity instruments (FX "=X", futures "=F", indices "^", crypto "-USD"/"-USDT") have no company
@@ -3066,8 +3056,6 @@ def _order_profile(name):
     _wol = _ulim.get("wo_lifespan_days")
     if isinstance(_wol, (int, float)) and _wol >= 1:
         _profile["wo_lifespan_days"] = int(_wol)
-    # Per-user Pre-order proximity band (user 2026-08-03, P-75) — apply the acting user's own % at
-    # placement; falls back to the shared default when unset.
     # No Pre-order threshold: "Create an order" never uses the Pre-orders system (owner 2026-10-10).
     return _profile
 
@@ -3111,9 +3099,14 @@ def api_place_order():
     import logging as _logging
     _cap = []
     _sigtk = str(sig.get("ticker") or tk)
+    _me = _threading.get_ident()
 
     class _CapH(_logging.Handler):
         def emit(self, rec):
+            # Only this request's own lines: another account's concurrent line names its free margin and
+            # its personal limits (security review 2026-10-22).
+            if rec.thread != _me:
+                return
             try:
                 m = rec.getMessage()
                 if _sigtk in m or tk in m:
@@ -3126,7 +3119,7 @@ def api_place_order():
     try:
         import ig_shim
         _profile = _order_profile(name)
-        ig_shim.order_skip_reason(tk, clear_only=True)
+        ig_shim.order_skip_reason(tk)   # forget an earlier request's refusal on this thread
         with ig_shim.acting_session(name):
             wo = ig_shim.place_hvf_order_from_sig(sig, _profile, "WEB_MANUAL", 1.0,
                                                   size_override=body.get("size"))
@@ -3744,19 +3737,19 @@ def _current_precomputed(store_key: str):
                     and (doc.get("dataset") or "") == (_load_snapshot().get("generated_utc") or ""))
         except Exception:
             return False
-    doc = _precomputed_file(store_key)[1]
-    if not current(doc):
-        try:
-            import web_store
-            doc = web_store.load_json_store(store_key)
-        except Exception as ex:
-            log.warning(f"precomputed {store_key} unavailable ({ex}); building live")
-            return None
+    # _stored_doc: the file when its revision is the database's, else the database's copy fetched once per
+    # revision -- not the whole document on every request while the stored copy is out of date.
+    try:
+        doc = _stored_doc(store_key)
+    except Exception as ex:
+        log.warning(f"precomputed {store_key} unavailable ({ex}); building live")
+        return None
     return doc["payload"] if current(doc) else None
 
 
 _REVISION_TTL = 120          # seconds a revision probe is trusted before it is asked again
-_REVISION_CACHE: dict = {}   # store_key -> (asked_at, revision)
+_REVISION_CACHE: dict = {}   # store_key -> (asked_at, revision); revision _DB_DOWN after a failed probe
+_DB_DOWN = object()
 _STORED_DOC_CACHE: dict = {}  # store_key -> (revision, document) last fetched from the database
 
 
@@ -3771,23 +3764,34 @@ def _stored_doc(store_key: str):
     now = _time.time()
     hit = _REVISION_CACHE.get(store_key)
     file_rev, file_doc = _precomputed_file(store_key)
+    held = _STORED_DOC_CACHE.get(store_key)
+
+    def as_is(ex):
+        log.warning(f"{store_key} unreadable from the database ({ex}); serving the IONOS file")
+        return file_doc if file_doc is not None else (held or (None, None))[1]
+
     if hit and now - hit[0] < _REVISION_TTL:
         rev = hit[1]
     else:
         try:
             rev = web_store.read_json_store_revision(store_key)
         except Exception as ex:
-            log.warning(f"{store_key} revision unavailable ({ex}); serving the IONOS file")
-            return file_doc if file_doc is not None else (_STORED_DOC_CACHE.get(store_key) or (None, None))[1]
+            rev = _DB_DOWN   # asked again only after _REVISION_TTL, not on every request of an outage
+            _REVISION_CACHE[store_key] = (now, rev)
+            return as_is(ex)
         _REVISION_CACHE[store_key] = (now, rev)
+    if rev is _DB_DOWN:
+        return as_is("probe failed")
     if rev is None:
         return None
     if file_doc is not None and file_rev == rev:
         return file_doc
-    held = _STORED_DOC_CACHE.get(store_key)
     if held and held[0] == rev:
         return held[1]
-    doc = web_store.load_json_store(store_key)
+    try:
+        doc = web_store.load_json_store(store_key)
+    except Exception as ex:
+        return as_is(ex)
     _STORED_DOC_CACHE[store_key] = (rev, doc)
     return doc
 
@@ -3808,8 +3812,8 @@ def _perf_stored():
     _build_perf_payload the endpoint itself calls, so a stored copy cannot drift into a lookalike build
     of a different population (memory: results-winners-same-dataset).
 
-    Deliberately mirrors _winners_stored, including reusing its max age rather than declaring a second
-    definition of "too old". A missed, failed or stale precompute makes the page slow, never wrong.
+    Read exactly as the winners payloads are (_current_precomputed), with the same max age. A missed,
+    failed or stale precompute makes the page slow, never wrong.
     """
     return _current_precomputed(_PERF_STORE_KEY)
 
@@ -5495,8 +5499,7 @@ def _best_cards_stored():
     if _BEST_CARDS_CACHE["gen"] == gen and _BEST_CARDS_CACHE["data"] is not None:
         return _BEST_CARDS_CACHE["data"]
     try:
-        import web_store
-        doc = web_store.load_json_store(_BEST_CARDS_KEY)
+        doc = _stored_doc(_BEST_CARDS_KEY)   # the IONOS file when its revision is the database's
     except Exception as ex:
         log.warning(f"best-settings cards unavailable ({ex})")
         return None
