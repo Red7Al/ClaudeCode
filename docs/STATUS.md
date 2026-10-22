@@ -121,6 +121,18 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
 | **Bars file LIVE on IONOS** (`/home/www/data/price_bars`, `-rw-------`). Seed run 39592648271: 1,925,858 rows read in 52.6 s, **63,393,609 bytes** (my 25-30 MB estimate was wrong), verify PASS. Update run 39593098023: 0 rows read (nothing stamped since 05:32), 4.2 s, verify PASS. In the Morning Chain from 2026-10-22 as step 1b beside the report; nothing reads it yet. First real update: tomorrow 03:30 (rows from the 23:00 audit and the refresh). | runs above |
 | Plan: one bars read right after the price refresh into a file; every later step reads it; version-guarded fallback; file-vs-database output identical before any step moves; egress before/after to the owner before shipping. | Per-step "before" figures: sampler over the 10-21 18:30 chain |
 
+## 2h. Done 2026-10-22 -- all pushed and deployed (live build `e220e2a3eae5`, worker loaded 15:24:35Z)
+
+| Fact | Proof |
+|---|---|
+| **Price file readers in SHADOW** (database answers; file answer compared beside it, every difference logged as `PRICE-BARS SHADOW DIFFERENT`). Closing Window reads history via `instrument_metrics._bars_bulk`, one read, and fetches the file inside the run only when a ticker has a partial bar (`696808b`, `ab14b69`). Per-ticker vs bulk: 20 tickers / 5,466 rows IDENTICAL. Price-file reader on the real 1,926,389-row file: identical output, load 27.4 s -> 23.2 s, lookup 0.38 s -> 0.04 s. | live check 10-22; `ab14b69` |
+| **Stored payloads read once per revision** (`_stored_doc`): winners, performance, best-settings cards, panels. Live 12:12Z: 8 requests cost 2 one-row revision probes, 0 full-document fetches. If the DB is down, the file or held copy serves. | live, build `6eee5ba8d3dd` |
+| **squeeze_history read only when written** (`e33cc6b`): gated on `pg_stat_user_tables` write counter (a committed write shows within 10 s). Was ~27,400 rows every 15 min. **Latest-close fallback** (`6a4e620`): asked only when the price-data version changes, not every 15 min. | `test_squeeze_rows_unchanged.py` |
+| **Security review** (`4cd5524`, `ab14b69`): one account's size refusal could reach another user's order screen; refusal stores now per thread. No other finding at confidence >= 8. | review 10-22 |
+| **Guide screenshots** (`821d282`): real screens with placeholder data (`docs/_guide_stub_server.py`, `docs/_capture_guide_images.py`, manual only). "Adding IG credentials" rewritten to match the screen: four fields, LIVE IG only; the false "select demo or live" step removed. | live guide HTML: figures 4/1/1/1 |
+| **Egress** 2026-10-18 -> 10-22: **32.10 GB/30d = 6.42x** the free 5 GB. `_perf_bars` 16.40 GB (51%), other price_history 4.86, pg_dump 4.35 (two manual runs 10-21), rest 4.33, `pg_timezone_names` 1.62 (not ours), `_window_bars` 0.54. New baseline 2026-10-22T12:35:53Z. Estimate after jobs read the file (`PRICE_BARS=on`): ~5-8 GB/month (DERIVED, unproven). | `egress_report.py` |
+| **Next:** read the 16:30/18:30 and 03:30 shadow summaries; if all IDENTICAL, switch jobs to `on`, measure egress against the 12:35Z baseline, tell the owner old vs new first. Then the remaining small price_history readers (52-week min/max, `publish_report_summary.py` latest close, `order_metrics.py`, chart `_price_bars`, latest-close fallback). CR "EVERY NUMBER EDITABLE" stays In Progress until a real order uses it. | |
+
 ## 3. Open, measured, not fixed
 
 1. **Website pool use, now measured.** 2 web processes (40 concurrent `/api/report-check?process=1` calls:
