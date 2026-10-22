@@ -142,6 +142,32 @@ def _record_shadow(rows, different):
     _SHADOW["different"] += int(different)
 
 
+def fetch_when_needed(want: str = "shadow") -> bool:
+    """For a job that only sometimes needs bars (Closing Window: every 10 minutes, almost always with nothing
+    to judge -- 51 of 51 runs on 2026-10-21): fetch the file from IONOS now, inside the run, instead of in a
+    workflow step on every run. Uses .github/scripts/fetch_price_bars.sh; on success points this process at
+    it. Does nothing outside GitHub Actions, or when a file is already configured. True when bars come from
+    a file (shadow or on) from here on."""
+    if os.environ.get("PRICE_BARS_DIR"):
+        return mode() != "off"
+    if not (os.environ.get("RUNNER_TEMP") and os.environ.get("GITHUB_ENV") and os.environ.get("IONOS_SSH_KEY")):
+        return False
+    import subprocess
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".github", "scripts", "fetch_price_bars.sh")
+    try:
+        r = subprocess.run(["bash", script, want], capture_output=True, text=True, timeout=300)
+    except Exception as exc:
+        log.warning("price bars fetch did not run (%s); reading the database", exc)
+        return False
+    if r.returncode != 0:
+        log.warning("price bars fetch failed (%s); reading the database", (r.stderr or r.stdout).strip()[-300:])
+        return False
+    os.environ["PRICE_BARS_DIR"] = os.path.join(os.environ["RUNNER_TEMP"], "price_bars")
+    os.environ["PRICE_BARS"] = want
+    log.info("%s", r.stdout.strip()[-300:])
+    return True
+
+
 def serve(db, items, back, from_database):
     """The bars for `items` [(ticker, from_date)] widened back by `back` (a timedelta), as
     {ticker: [(bar_date, high, low, close, volume), ...]}. `from_database` is the caller's own query."""

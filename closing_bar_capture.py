@@ -146,6 +146,12 @@ def capture(tickers, as_of=None, dry_run=False, db=None):
         if own:
             db = get_db()
         instrument_metrics.ensure_schema(db)
+        # The stored daily history changes only at the twice-daily refresh, so it is read from the price bars
+        # file (owner 2026-10-22: "400 days history every 10 mins should not come from supabase"), fetched only
+        # on a run that has something to judge, and for every ticker in one read rather than one per ticker.
+        import price_bars
+        price_bars.fetch_when_needed("shadow")
+        history = instrument_metrics._bars_bulk(list(tickers), as_of, db)
         for ticker in tickers:
             summary["attempted"] += 1
             try:
@@ -155,8 +161,7 @@ def capture(tickers, as_of=None, dry_run=False, db=None):
                     continue
                 # The stored daily history, with today's partial bar appended -- so VWAP, ATR and
                 # VolumeScore are computed over exactly the window they use every other day.
-                hist = instrument_metrics._bars(ticker, as_of, db)
-                hist = [b for b in hist if str(b[0])[:10] < partial[0]]
+                hist = [b for b in history.get(ticker, []) if str(b[0])[:10] < partial[0]]
                 if len(hist) < 2 * 14 + 1:
                     log.warning("%s: not enough history to judge a break bar", ticker)
                     summary["skipped"] += 1

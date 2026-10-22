@@ -1,4 +1,4 @@
-name: Closing Window (capture the break bar, judge same-day opens, 2026-09-07)
+name: Closing Window (capture the break bar, judge same-day opens, 2026-10-22)
 
 # Runs every ten minutes through the trading day and does two things for whichever instruments are
 # inside their OWN exchange's closing window at that moment:
@@ -92,6 +92,13 @@ jobs:
       # reporting on rows that were captured on an earlier pass.
       - name: Capture the closing bar
         continue-on-error: true
+        # IONOS: the price bars file is fetched inside the run, only when something is in a closing window
+        # (price_bars.fetch_when_needed; owner 2026-10-22: history is not re-read from Supabase every 10 min).
+        env:
+          IONOS_HOST:    ${{ secrets.IONOS_HOST }}
+          IONOS_USER:    ${{ secrets.IONOS_USER }}
+          IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
         run: |
           python closing_bar_capture.py \
             ${{ inputs.window && format('--window {0}', inputs.window) || '' }} \
