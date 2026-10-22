@@ -676,8 +676,13 @@ _CARD = {
 def _store_cards(monkeypatch, payload, *, dataset="GEN-1", snapshot_gen="GEN-1"):
     import web_store
     monkeypatch.setattr(server, "_load_snapshot", lambda: {"generated_utc": snapshot_gen})
-    monkeypatch.setattr(web_store, "load_json_store",
-                        lambda key: {"payload": payload, "dataset": dataset} if key == "best_settings_cards" else None)
+    doc = {"payload": payload, "dataset": dataset}
+    monkeypatch.setattr(web_store, "load_json_store", lambda key: doc if key == "best_settings_cards" else None)
+    monkeypatch.setattr(web_store, "read_json_store_revision",
+                        lambda key: abs(hash(repr(doc))) if key == "best_settings_cards" else None)
+    monkeypatch.setattr(server, "_PRECOMPUTED_DIR", "/nonexistent-precomputed")
+    for c in (server._REVISION_CACHE, server._STORED_DOC_CACHE, server._PRECOMPUTED_CACHE):
+        c.clear()
 
 
 def test_the_public_cards_need_no_token(monkeypatch):

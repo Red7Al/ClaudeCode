@@ -18,6 +18,18 @@ import run_winners_precompute
 from hvf_web import server
 
 
+@pytest.fixture(autouse=True)
+def _fresh_stored_docs(tmp_path, monkeypatch):
+    """Stored payloads are read through server._stored_doc, which caches per revision and reads files from
+    _PRECOMPUTED_DIR: start each test with neither."""
+    monkeypatch.setattr(server, "_PRECOMPUTED_DIR", str(tmp_path / "precomputed"))
+    for c in (server._REVISION_CACHE, server._STORED_DOC_CACHE, server._PRECOMPUTED_CACHE):
+        c.clear()
+    yield
+    for c in (server._REVISION_CACHE, server._STORED_DOC_CACHE, server._PRECOMPUTED_CACHE):
+        c.clear()
+
+
 @pytest.fixture
 def fake_dataset(monkeypatch):
     """A snapshot as the runner actually sees one: a generation time AND records.
@@ -72,6 +84,11 @@ def _store(monkeypatch, docs):
         @staticmethod
         def load_json_store(key):
             return docs.get(key)
+
+        @staticmethod
+        def read_json_store_revision(key):
+            # The revision moves whenever the stored document does, as save_json_store_versioned's does.
+            return None if docs.get(key) is None else abs(hash(repr(docs.get(key))))
 
         @staticmethod
         def save_json_store(key, payload):
