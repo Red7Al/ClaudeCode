@@ -165,7 +165,8 @@ workflow file changes, put today's date in its `name:`.
   refresh-derived table outside the file builder needs the owner's approval. **The files must be proven
   correct or they are useless** (owner, 2026-10-21): every section of every build is compared with the
   database, and a file that fails, or whose price data has changed since it was built, is not used. Egress was 4.84x the free
-  limit when this was decided; progress is in `docs/STATUS.md`.
+  limit when this was decided; progress is in `docs/STATUS.md`. **Owner 2026-10-23 (egress 4.59x): "move this live asap"** -- every job
+  that has the file reads it (`PRICE_BARS=on`); new readers still go through shadow first.
 - **Scanner output and data never go to GitHub — owner, 2026-10-21.** The repository is PUBLIC. No
   workflow may save scanner output, summaries, price data, database backups or secrets as a GitHub
   artifact: an artifact's listing is public (measured, HTTP 200 anonymously) and, per GitHub's

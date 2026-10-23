@@ -20,7 +20,12 @@ class _Db:
 
 def _wire(monkeypatch):
     seen = {"fetch": 0, "bulk": []}
-    monkeypatch.setattr(price_bars, "fetch_when_needed", lambda want="shadow": seen.__setitem__("fetch", seen["fetch"] + 1) or True)
+
+    def fetch(want="shadow"):
+        seen["fetch"] += 1
+        seen["want"] = want   # owner 2026-10-23 "move this live asap": the file answers ("on"), not shadow
+        return True
+    monkeypatch.setattr(price_bars, "fetch_when_needed", fetch)
     monkeypatch.setattr(instrument_metrics, "ensure_schema", lambda db: None)
     monkeypatch.setattr(instrument_metrics, "_bars_bulk", lambda ts, end, db, **k: seen["bulk"].append(list(ts)) or {t: HIST for t in ts})
     monkeypatch.setattr(instrument_metrics, "_bars", lambda *a, **k: (_ for _ in ()).throw(AssertionError("one read per ticker")))
@@ -31,7 +36,7 @@ def _wire(monkeypatch):
 def test_one_read_for_every_ticker_through_the_file_reader(monkeypatch):
     seen = _wire(monkeypatch)
     out = cbc.capture(["AAA", "BBB"], as_of=dt.date(2026, 10, 22), dry_run=True, db=_Db())
-    assert seen == {"fetch": 1, "bulk": [["AAA", "BBB"]]}
+    assert seen == {"fetch": 1, "want": "on", "bulk": [["AAA", "BBB"]]}
     assert out["attempted"] == 2 and [r["ticker"] for r in out["rows"]] == ["AAA", "BBB"]
 
 

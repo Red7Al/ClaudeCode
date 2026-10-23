@@ -142,22 +142,23 @@ def test_a_damaged_file_falls_back_to_the_database(bars_dir, monkeypatch):
     assert db.bar_queries == 1
 
 
-def test_the_evening_publish_and_the_morning_best_settings_fetch_the_file_in_shadow():
-    """MEASURED 2026-10-21 19:32-19:36: the publish run's winners + Best Settings steps read ~1.57M bar rows."""
+def test_the_evening_publish_and_the_morning_best_settings_read_the_file():
+    """MEASURED 2026-10-21 19:32-19:36: the publish run's winners + Best Settings steps read ~1.57M bar rows.
+    ON since owner 2026-10-23 ("move this live asap"): the file answers when it is current."""
     import yaml
     pub = yaml.safe_load(open(".github/workflows/trading-scanner-snapshot.yml", encoding="utf-8"))
     steps = pub["jobs"]["publish"]["steps"]
     names = [s.get("name") or "" for s in steps]
-    fetch = names.index("Fetch the price bars file (shadow)")
+    fetch = names.index("Fetch the price bars file (on)")
     assert fetch < names.index("Build, publish and read-verify immutable Scanner snapshot"), "refresh_daily runs in the build"
     assert fetch < names.index("Warm the precomputed winners payloads") < names.index("Precompute the public Best Settings cards")
     assert "if" not in steps[fetch]
-    assert steps[fetch]["run"] == "bash .github/scripts/fetch_price_bars.sh shadow"
+    assert steps[fetch]["run"] == "bash .github/scripts/fetch_price_bars.sh on"
     assert steps[fetch]["continue-on-error"] is True
     bs = yaml.safe_load(open(".github/workflows/trading-best-settings-audit.yml", encoding="utf-8"))
     steps = bs["jobs"]["audit"]["steps"]
     runs = [str(s.get("run", "")) for s in steps]
-    assert runs.index("bash .github/scripts/fetch_price_bars.sh shadow") < runs.index("python run_best_settings_audit.py")
+    assert runs.index("bash .github/scripts/fetch_price_bars.sh on") < runs.index("python run_best_settings_audit.py")
 
 
 def test_the_fetch_script_refuses_any_mode_but_shadow_or_on(tmp_path):
@@ -204,8 +205,8 @@ def test_the_morning_report_fetches_todays_file_without_needing_the_bars_job():
     rep = yaml.safe_load(open(".github/workflows/trading-hvf-report.yml", encoding="utf-8"))
     steps = rep["jobs"]["run"]["steps"]
     names = [s.get("name") or "" for s in steps]
-    fetch = names.index("Fetch the price bars file (shadow)")
+    fetch = names.index("Fetch the price bars file (on)")
     assert fetch < names.index("Run HVF daily report")
-    assert steps[fetch]["run"] == "bash .github/scripts/fetch_price_bars.sh shadow 600" and steps[fetch]["continue-on-error"]
+    assert steps[fetch]["run"] == "bash .github/scripts/fetch_price_bars.sh on 600" and steps[fetch]["continue-on-error"]
     chain = yaml.safe_load(open(".github/workflows/trading-morning-chain.yml", encoding="utf-8"))
     assert chain["jobs"]["daily_report"]["needs"] == "price_refresh"

@@ -164,7 +164,7 @@ def capture(tickers, as_of=None, dry_run=False, db=None):
         history = {}
         if partials:
             import price_bars
-            price_bars.fetch_when_needed("shadow")
+            price_bars.fetch_when_needed("on")   # owner 2026-10-23: live
             history = instrument_metrics._bars_bulk(list(partials), as_of, db)
         for ticker, partial in partials.items():
             try:

@@ -1,4 +1,4 @@
-name: Scanner Snapshot Publish (2026-10-23)
+name: Scanner Snapshot Publish (2026-10-23b)
 
 # Heavy Scanner compute runs on the Actions worker, never on the IONOS web process. Scheduling remains in
 # cron-job.org (GitHub-native cron is banned); the admin Refresh button dispatches this workflow as well.
@@ -99,14 +99,16 @@ jobs:
       # The price bars file for the steps below (owner 2026-10-21: read files, not the database) -- first,
       # because the build step runs squeeze_history.refresh_daily (~384k bar rows). MEASURED
       # 2026-10-21 19:32-19:36: these steps read ~1.57M bar rows from price_history per run, ~1.11M of them in
-      # the Best Settings step. SHADOW: the database still answers and the file's answer is compared with it
-      # in the log ("PRICE-BARS SHADOW"); "on" only after the comparisons show no difference. A failed fetch
+      # the Best Settings step. Shadow runs (database answering, file compared) showed
+      # no difference on 10-22/23. A failed fetch
       # exports nothing, so the steps read the database exactly as before.
-      - name: Fetch the price bars file (shadow)
+      # ON (owner 2026-10-23: "move this live asap - we do not have free resource to cover this egress"): the file
+      # answers when it is CURRENT (same row count and newest stamp as price_history); otherwise the database.
+      - name: Fetch the price bars file (on)
         continue-on-error: true
         env:
           IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
-        run: bash .github/scripts/fetch_price_bars.sh shadow
+        run: bash .github/scripts/fetch_price_bars.sh on
 
       - name: Build, publish and read-verify immutable Scanner snapshot
         id: publish
