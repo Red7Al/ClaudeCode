@@ -187,7 +187,10 @@ Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub em
 
 Ten, all upheld, in `ChangeRequests/20260918.txt`. The tenth (2026-10-18) carries the FIRST FORMAL WARNING
 -- "don't make assumptions - this will lead to immediate termination": a loop count reported as rows written,
-and an unmeasured 6% constant committed into the price guard. The ninth (2026-10-11): the agent designed a route that
+and an unmeasured 6% constant committed into the price guard. **Added to the tenth 2026-10-23: "weeks and weeks of
+asking for this - why the delay?" / "it's not good enough"** -- the read-files instruction (FOURTH and EIGHTH
+complaints) went live only 10-23: a month of caching the same database reads instead of removing them, then days
+waiting on scheduled shadow runs. A measured cost over a hard limit is fixed at the root the same day. The ninth (2026-10-11): the agent designed a route that
 would have exposed ANY login's IG positions and history to the check key, and got approval on a feature name
 that hid it. Before proposing any tool, state whose data it reads and who can reach it. The common thread:
 not reading my own output and code first.
