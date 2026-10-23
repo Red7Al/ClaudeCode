@@ -665,15 +665,49 @@ def _apply(conn, name, sql, sleep=None):
             (sleep or time.sleep)(LOCK_RETRY_WAIT)
 
 
+# Each migration is applied ONCE and recorded here, by name and the hash of its SQL (a changed statement runs again).
+# Re-running every statement on every job made Supabase's REST layer reload its schema cache each time -- its
+# pgrst_ddl_watch event trigger fires on ANY DDL, a no-op `ADD COLUMN IF NOT EXISTS` included (MEASURED 2026-10-23:
+# 0 reloads in 20 s idle, 1 in the 20 s after one no-op ALTER) -- 516 reloads in 24.7 h, each returning the
+# timezone list: 1.71 GB/30d of egress, 7%. SCHEMA_REAPPLY=1 runs every statement regardless.
+APPLIED_TABLE = "schema_migrations"
+
+
+def _sql_hash(sql) -> str:
+    import hashlib
+    return hashlib.sha256(sql.encode("utf-8")).hexdigest()[:16]
+
+
+def _applied(conn) -> dict:
+    """{name: sql hash} already applied; creates the record table the first time (one DDL, once)."""
+    try:
+        return {n: h for n, h in (conn.run(f"select name, sql_hash from {APPLIED_TABLE}") or [])}
+    except Exception as e:
+        if "42P01" not in str(e):
+            raise
+    conn.run(f"create table if not exists {APPLIED_TABLE} (name text primary key, sql_hash text not null, "
+             f"applied_at timestamptz not null default now())")
+    return {}
+
+
 def main():
     log.info(f"Connecting to {SUPABASE_HOST}...")
     conn = _pool_get_db()
     conn.run(f"SET lock_timeout = '{LOCK_TIMEOUT}'")
+    done = _applied(conn)
+    if os.environ.get("SCHEMA_REAPPLY") == "1":
+        done = {}
 
-    ok = failed = 0
+    ok = failed = skipped = 0
     for name, sql in MIGRATIONS:
+        h = _sql_hash(sql)
+        if done.get(name) == h:
+            skipped += 1
+            continue
         try:
             _apply(conn, name, sql)
+            conn.run(f"insert into {APPLIED_TABLE} (name, sql_hash) values (:n, :h) "
+                     f"on conflict (name) do update set sql_hash = excluded.sql_hash, applied_at = now()", n=name, h=h)
             log.info(f"  OK  {name}")
             ok += 1
         except Exception as e:
@@ -681,7 +715,7 @@ def main():
             failed += 1
 
     conn.close()
-    log.info(f"Schema run complete: {ok} applied, {failed} failed")
+    log.info(f"Schema run complete: {ok} applied, {skipped} already applied, {failed} failed")
     if failed:
         raise SystemExit(1)
 
