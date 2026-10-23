@@ -1,4 +1,4 @@
-name: Scanner Snapshot Publish (2026-10-22b)
+name: Scanner Snapshot Publish (2026-10-23)
 
 # Heavy Scanner compute runs on the Actions worker, never on the IONOS web process. Scheduling remains in
 # cron-job.org (GitHub-native cron is banned); the admin Refresh button dispatches this workflow as well.
@@ -33,7 +33,17 @@ env:
   IONOS_SITE:                       ${{ secrets.IONOS_SITE || 'https://www.squeezescanner.cloud' }}
 
 jobs:
+  # Bring the price bars file up to date first: rows written since the 03:52 build (2026-10-22: 268 by a chart's
+  # Yahoo write-through at 14:32) made the morning file STALE, so every evening step read the database and the
+  # evening comparison never ran. Only the rows stamped since the last build are read. A failed build never
+  # holds the snapshot back: the publish still runs and reads the database, as before.
+  bars_file:
+    uses: ./.github/workflows/trading-bars-file.yml
+    secrets: inherit
+
   publish:
+    needs: bars_file
+    if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
     steps:

@@ -1,4 +1,4 @@
-name: Price Bars File (2026-10-21b)
+name: Price Bars File (2026-10-23)
 
 # The price bars file: price_history read from the database ONCE, then only the rows stamped since the last
 # build (owner 2026-10-21: "read files, not the database" -- rule in CLAUDE.md). Every later step reads this
@@ -9,7 +9,8 @@ name: Price Bars File (2026-10-21b)
 # as a GitHub artifact -- the repository is public and is for code, not data (owner 2026-10-21).
 #
 # Called by the Morning Chain after the price refresh, alongside the report -- nothing waits on it yet, so a
-# failure here shows the chain red (Cron Watch emails) without delaying the 7am email. No schedule: block
+# failure here shows the chain red (Cron Watch emails) without delaying the 7am email -- and by Scanner Snapshot
+# Publish before its build, so the evening steps get a file that includes the day's writes (2026-10-23). No schedule: block
 # (banned); it runs only as part of the chain, or by hand.
 on:
   workflow_call:
