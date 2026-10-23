@@ -638,14 +638,42 @@ MIGRATIONS = [
 # Runner
 # ----------------------------------------------------------------------------------------------------------------------
 
+# Every migration re-runs on every job, and DDL takes an exclusive lock even when there is nothing to change. Waiting
+# behind a long read of the same table, it sat past the client's socket timeout and the dead connection failed every
+# later statement: Morning Chain 2026-10-23 04:03:54, `ALTER TABLE price_history` behind step 1b's price-file read
+# (04:03:44-04:04:25), 18 failed, the chain stopped. While queued it also blocks every other reader of the table, the
+# website included. So a statement gives up the lock wait after LOCK_TIMEOUT, cleanly (Postgres 55P03, connection
+# intact), and is retried.
+LOCK_TIMEOUT = "5s"
+LOCK_RETRIES = 12          # x LOCK_RETRY_WAIT: up to ~3 minutes for a busy table
+LOCK_RETRY_WAIT = 10
+
+
+def _lock_timed_out(exc) -> bool:
+    return "55P03" in str(exc) or "lock timeout" in str(exc)
+
+
+def _apply(conn, name, sql, sleep=None):
+    import time
+    for attempt in range(LOCK_RETRIES + 1):
+        try:
+            return conn.run(sql)
+        except Exception as e:
+            if not _lock_timed_out(e) or attempt == LOCK_RETRIES:
+                raise
+            log.warning(f"  WAIT {name} — table busy, retry {attempt + 1}/{LOCK_RETRIES} in {LOCK_RETRY_WAIT}s")
+            (sleep or time.sleep)(LOCK_RETRY_WAIT)
+
+
 def main():
     log.info(f"Connecting to {SUPABASE_HOST}...")
     conn = _pool_get_db()
+    conn.run(f"SET lock_timeout = '{LOCK_TIMEOUT}'")
 
     ok = failed = 0
     for name, sql in MIGRATIONS:
         try:
-            conn.run(sql)
+            _apply(conn, name, sql)
             log.info(f"  OK  {name}")
             ok += 1
         except Exception as e:
