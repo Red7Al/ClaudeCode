@@ -1,4 +1,4 @@
-name: Supabase database backup (2026-10-21b)
+name: Supabase database backup (2026-10-23)
 
 # Self-managed logical backup of the Supabase Postgres DB (user 2026-08-02, P-25). Supabase's own scheduled
 # backups are a paid feature; this is the free alternative — a read-only pg_dump to a compressed
@@ -8,6 +8,11 @@ name: Supabase database backup (2026-10-21b)
 # NEVER a GitHub artifact (owner 2026-10-21: "the github repository is for code not reports"). The repository
 # is PUBLIC: this job used to upload every dump as an artifact, and on 2026-10-21 50 of them (3,873 MB, every
 # table) were listed publicly (measured) and, per GitHub's documentation, downloadable by any signed-in user.
+#
+# price_history's ROWS are not dumped (owner 2026-10-23: "yes"): the table is most of every dump's egress
+# (~0.55 GB/month of the free 5 GB, DERIVED from COPY row counts) and already has a verified full copy on IONOS --
+# the price bars file (/home/www/data/price_bars), compared with the database on every build. Its structure is
+# still dumped. The file lacks recorded_at, and IONOS keeps only the latest file.
 #
 # Server is Postgres 17.6, so the client is pinned to 17 (pg_dump must be >= the server major version).
 # The connection uses the SESSION pooler (port 5432) — the same endpoint db_pool uses; the transaction
@@ -59,6 +64,7 @@ jobs:
             -h aws-0-eu-west-1.pooler.supabase.com -p 5432 \
             -U "$SUPABASE_USER" -d postgres \
             --schema=public --no-owner --no-privileges -Fc \
+            --exclude-table-data=public.price_history \
             -f "supabase-$STAMP.dump"
           ls -lh "supabase-$STAMP.dump"
       # The dump must restore: pg_restore --list reads its whole table of contents. The 17 binary by path: the
@@ -77,6 +83,8 @@ jobs:
           tables=$(/usr/lib/postgresql/17/bin/pg_restore --list "$f" | grep -c ' TABLE DATA ')
           echo "$f: $(stat -c %s "$f") bytes, $entries entries, $tables tables with data"
           [ "$tables" -gt 0 ] || { echo "dump holds no table data" >&2; exit 1; }
+          /usr/lib/postgresql/17/bin/pg_restore --list "$f" | grep -q " TABLE public price_history " \
+            || { echo "dump lacks the price_history table definition" >&2; exit 1; }
           key="$RUNNER_TEMP/ionos_key"; printf '%s\n' "$IONOS_SSH_KEY" > "$key"; chmod 600 "$key"
           ssh="ssh -i $key -p $IONOS_PORT -o BatchMode=yes -o StrictHostKeyChecking=accept-new ${IONOS_USER}@${IONOS_HOST}"
           dir=/home/www/data/backups

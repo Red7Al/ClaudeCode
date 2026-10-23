@@ -178,5 +178,7 @@ workflow file changes, put today's date in its `name:`.
   Actions, store it, have the web tier read it — see `skills_src/ah-data-sources`.
 - **Never "optimise" `_winLedger`'s sort** — the replay compounds; `localeCompare` → `<` moved the wallet
   by £1,037.
+- **The weekly backup does not dump `price_history`'s rows** (owner, 2026-10-23: "yes") -- its definition only. The
+  rows' backup is the verified price bars file on IONOS (`/home/www/data/price_bars`). Most of every dump's egress.
 - **Secrets** live in Supabase `app_secrets`, GitHub and `.env`. Keep `.env` complete as a cold backup.
   The owner provides none in chat and does not expect to be asked.
