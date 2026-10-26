@@ -1,4 +1,4 @@
-name: Session Watchdog (2026-10-08)
+name: Session Watchdog (2026-10-26)
 
 # Scheduling: cron-job.org → workflow_dispatch (every 30min Mon-Fri, job id 7767389).
 # GitHub-native cron REMOVED — it is banned (unreliable) and was running this
@@ -26,7 +26,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - run: pip install requests pg8000 python-dotenv cryptography
+      - run: pip install requests pg8000 'scramp<1.5' python-dotenv cryptography
       - run: python run_session_watchdog.py
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}

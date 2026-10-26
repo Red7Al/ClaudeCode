@@ -3,6 +3,8 @@ yfinance>=0.2.40
 pandas>=2.0.0
 numpy>=1.24.0
 pg8000>=1.30.0
+scramp>=1.4.5,<1.5     # pg8000's login library. 1.5.0 (2026-10-25) dropped make_channel_binding, which pg8000
+                       # 1.31.5 calls: every job failed to connect from Sunday 18:30.
 python-dotenv>=1.0.0
 matplotlib>=3.7.0
 tweepy>=4.14.0         # official X (Twitter) API v2 publishing (x_publish.py)
