@@ -1872,10 +1872,15 @@ def _levels_changes_line(prev_fp: str, h3, stop, target) -> str:
     return "  ·  ".join(chips)
 
 
+def _ensure_x_draft_state(conn):
+    import schema_once   # once across every job, not on every read and save (69 runs 2026-10-23 -> 10-26)
+    schema_once.ensure(conn, "intraday_signals.x_draft_state", _X_DRAFT_STATE_SQL)
+
+
 def _draft_fp_last(ticker: str) -> str:
     try:
         conn = _pool_get_db()
-        conn.run(_X_DRAFT_STATE_SQL)
+        _ensure_x_draft_state(conn)
         rows = conn.run("select fingerprint from x_draft_state where ticker = :t", t=ticker)
         conn.close()
         return rows[0][0] if rows else ""
@@ -1887,7 +1892,7 @@ def _draft_fp_last(ticker: str) -> str:
 def _draft_fp_save(ticker: str, fp: str):
     try:
         conn = _pool_get_db()
-        conn.run(_X_DRAFT_STATE_SQL)
+        _ensure_x_draft_state(conn)
         conn.run("insert into x_draft_state (ticker, fingerprint, posted_at) values (:t, :f, now()) "
                  "on conflict (ticker) do update set fingerprint = excluded.fingerprint, "
                  "posted_at = excluded.posted_at", t=ticker, f=fp)

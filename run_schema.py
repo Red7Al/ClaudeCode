@@ -45,6 +45,7 @@
 # ======================================================================================================================
 
 import os
+import schema_once
 from db_pool import get_db as _pool_get_db   # resilient session-pooler connection (timeout+retry)
 import logging
 import pg8000.native
@@ -670,44 +671,26 @@ def _apply(conn, name, sql, sleep=None):
 # pgrst_ddl_watch event trigger fires on ANY DDL, a no-op `ADD COLUMN IF NOT EXISTS` included (MEASURED 2026-10-23:
 # 0 reloads in 20 s idle, 1 in the 20 s after one no-op ALTER) -- 516 reloads in 24.7 h, each returning the
 # timezone list: 1.71 GB/30d of egress, 7%. SCHEMA_REAPPLY=1 runs every statement regardless.
-APPLIED_TABLE = "schema_migrations"
-
-
-def _sql_hash(sql) -> str:
-    import hashlib
-    return hashlib.sha256(sql.encode("utf-8")).hexdigest()[:16]
-
-
-def _applied(conn) -> dict:
-    """{name: sql hash} already applied; creates the record table the first time (one DDL, once)."""
-    try:
-        return {n: h for n, h in (conn.run(f"select name, sql_hash from {APPLIED_TABLE}") or [])}
-    except Exception as e:
-        if "42P01" not in str(e):
-            raise
-    conn.run(f"create table if not exists {APPLIED_TABLE} (name text primary key, sql_hash text not null, "
-             f"applied_at timestamptz not null default now())")
-    return {}
+# The record lives in schema_once (shared with every module's own schema statements).
 
 
 def main():
     log.info(f"Connecting to {SUPABASE_HOST}...")
     conn = _pool_get_db()
     conn.run(f"SET lock_timeout = '{LOCK_TIMEOUT}'")
-    done = _applied(conn)
+    done = dict(schema_once.applied(conn, fresh=True))
     if os.environ.get("SCHEMA_REAPPLY") == "1":
         done = {}
 
     ok = failed = skipped = 0
     for name, sql in MIGRATIONS:
-        h = _sql_hash(sql)
+        h = schema_once.sql_hash(sql)
         if done.get(name) == h:
             skipped += 1
             continue
         try:
             _apply(conn, name, sql)
-            conn.run(f"insert into {APPLIED_TABLE} (name, sql_hash) values (:n, :h) "
-                     f"on conflict (name) do update set sql_hash = excluded.sql_hash, applied_at = now()", n=name, h=h)
+            schema_once.record(conn, name, h)
             log.info(f"  OK  {name}")
             ok += 1
         except Exception as e:

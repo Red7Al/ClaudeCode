@@ -50,7 +50,8 @@ def _ensure(db):
     # schema DDL. MEASURED: ~20 create/alter-if-not-exists statements per web process start. The GitHub
     # jobs own the schema and still run it; the tables exist (they are read on every page load).
     if not _schema_ready and os.environ.get("HVF_WEB_TIER") != "1":
-        db.run(_DDL)
+        import schema_once   # once across every job, not per process (174 runs 2026-10-23 -> 10-26)
+        schema_once.ensure(db, "config_store.app_config", _DDL)
     _schema_ready = True
 
 

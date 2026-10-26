@@ -72,9 +72,11 @@ def _db():
     # HVF_WEB_TIER (set only by cgi-bin/app.py, the IONOS adapter, 2026-10-09): the website does not run
     # schema DDL. MEASURED: ~20 create/alter-if-not-exists statements per web process start. The GitHub
     # jobs own the schema and still run it; the tables exist (they are read on every page load).
+    # Once across every job (schema_once), not once per process: each job is a new process, and every no-op DDL
+    # made Supabase reload its schema cache -- 196 runs of these 10 statements 2026-10-23 -> 10-26.
     if not _ready and os.environ.get("HVF_WEB_TIER") != "1":
-        for stmt in _DDL:
-            db.run(stmt)
+        import schema_once
+        schema_once.ensure(db, "web_store", _DDL)
     _ready = True
     return db
 

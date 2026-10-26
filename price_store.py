@@ -118,8 +118,8 @@ def ensure_schema(db=None):
     if own:
         db = get_db()
     try:
-        for stmt in _DDL:
-            db.run(stmt)
+        import schema_once   # once across every job, not once per process
+        schema_once.ensure(db, "price_store", list(_DDL))
         _schema_ready = True
     finally:
         if own:
