@@ -141,6 +141,19 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
 | **(2) DONE: module schema checks applied once across every job** (`schema_once.py`, shared with `run_schema`): web_store (196 runs 10-23..26), app_config (174), x_draft_state (69), price_store. Live proof: job 1 1 reload, jobs 2-3 0 reloads (25 s settle). | `test_schema_once.py` |
 | **Next:** egress for the first full day on the file vs 22.95 GB/30d; attribute the remaining `_perf_bars` calls (website vs jobs); if all IDENTICAL, switch jobs to `on`, measure egress against the 12:35Z baseline, tell the owner old vs new first. Then the remaining small price_history readers (52-week min/max, `publish_report_summary.py` latest close, `order_metrics.py`, chart `_price_bars`, latest-close fallback). CR "EVERY NUMBER EDITABLE" stays In Progress until a real order uses it. | |
 
+## 2i. 2026-10-26 -- one IG code, several tickers (owner: "yes", then "ok, clean up now")
+
+- 68 IG codes were each linked to several tickers in `epic_lookup`. Causes: `social_monitor.save_new_pick` stored
+  IG's first search hit unchecked (104 of 156 rows); `get_epic` let a non-London ticker take a UK `KA.D.` code
+  (PRU -> Prudential plc). Fixed in `25a5160` (deployed): the social feed calls `get_epic`; `get_epic` refuses a
+  `KA.D.` code for a non-`.L` ticker.
+- Clean-up applied 2026-10-26: 89 rows deleted (61 non-London on `KA.D.`, 28 never-scanned tickers sharing a
+  scanned ticker's code). Every removed row is kept in table `epic_lookup_removed` (with `removed_at`, `reason`).
+  No working order referenced any of them. `epic_lookup` 2,286 -> 2,197.
+- Open: 35 codes are still shared where both tickers are scanned or neither is (e.g. LDO on USD/CAD, APA and
+  RMD on ASX codes, DJT/JXN on the Dow). They need the name check, not the listing rule; list goes to the owner
+  before any removal.
+
 ## 3. Open, measured, not fixed
 
 1. **Website pool use, now measured.** 2 web processes (40 concurrent `/api/report-check?process=1` calls:
