@@ -1,4 +1,4 @@
-name: Winners Precompute (daily — 2026-10-22)
+name: Winners Precompute (daily — 2026-10-26)
 
 # Builds the /api/winners payloads ahead of time so Best Settings does not pay for them on a user's first
 # visit. Triggered by cron-job.org via workflow_dispatch at 05:50 UTC Mon-Sat — NEVER add a schedule:
@@ -111,6 +111,18 @@ jobs:
               raise SystemExit(f"only {named} of {len(recs)} records carry a name; refusing to build "
                                "rows that would show the ticker in place of the company")
           PY
+      # The price bars file (owner 2026-10-21: read files, not the database; 2026-10-23: "move this live asap").
+      # _perf_bars was this job's 1,112,585-row database read every run (measured 2026-10-26). Shadow by hand
+      # 2026-10-26 16:48Z: 2 calls, 1,125,165 rows, 0 different. The file answers only when CURRENT; a failed
+      # fetch exports nothing and the job reads the database exactly as before.
+      - name: Fetch the price bars file (on)
+        continue-on-error: true
+        env:
+          IONOS_HOST:    ${{ secrets.IONOS_HOST }}
+          IONOS_USER:    ${{ secrets.IONOS_USER }}
+          IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: bash .github/scripts/fetch_price_bars.sh on
       - name: Build and store the winners payloads
         env:
           PRECOMPUTED_OUT: ${{ runner.temp }}/precomputed

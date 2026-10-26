@@ -281,3 +281,16 @@ def test_a_write_in_this_process_sends_later_reads_to_the_database(bars_dir, mon
     assert writes
     price_store.get_bars("BP.L", None, None, db=db)
     assert db.bar_queries == 1                                     # after the write, the database answered
+
+
+def test_winners_precompute_reads_the_file():
+    """MEASURED 2026-10-26: Morning Chain step 4 read 1,112,585 bar rows from the database in one _perf_bars call --
+    the job never fetched the file. Shadow by hand the same day: 1,125,165 rows, 0 different."""
+    import yaml
+    wf = yaml.safe_load(open(".github/workflows/trading-winners-precompute.yml", encoding="utf-8"))
+    (job,) = wf["jobs"].values()
+    steps = job["steps"]
+    runs = [str(s.get("run", "")) for s in steps]
+    fetch = runs.index("bash .github/scripts/fetch_price_bars.sh on")
+    assert fetch < [i for i, r in enumerate(runs) if "python run_winners_precompute.py" in r][0]
+    assert steps[fetch]["continue-on-error"] is True and "if" not in steps[fetch]
