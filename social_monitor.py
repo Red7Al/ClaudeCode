@@ -358,22 +358,15 @@ def save_new_pick(ticker: str, investor_name: str, source: str, post_url: str):
         rows = db_run("select epic from epic_lookup where ticker=:t", t=ticker)
 
         if not rows:
-            # Need IG session to look up
-            from ig_shim import session, get_db as ig_get_db
+            # The ONE resolver (2026-10-26). This used to store IG's FIRST search result for whatever followed a $ on
+            # X, with no name or listing check and currency forced to USD: 104 of the 156 rows on shared IG codes came
+            # from here (APPX -> Apple's code, MGRT -> Walmart's, LIBRA -> GBP/USD, TSMC -> TomCo Energy). get_epic
+            # checks the company name and the listing, and caches only a match.
             import time
+            from ig_shim import get_epic, session
             session.ensure_authenticated()
-            data    = session.get("/markets", params={"searchTerm": ticker}, version="1")
-            markets = data.get("markets", [])
-            if markets:
-                epic = markets[0]["epic"]
-                name = markets[0].get("instrumentName", "")
-                db_run(
-                    """insert into epic_lookup (ticker, epic, description, currency, market_type)
-                       values (:v_ticker, :v_epic, :v_name, 'USD', 'SHARES')
-                       on conflict (ticker) do update set epic=excluded.epic, last_seen=now()""",
-                    v_ticker=ticker, v_epic=epic, v_name=name
-                )
-                log.info(f"Epic found: {ticker} -> {epic} ({name})")
+            epic = get_epic(ticker)
+            log.info(f"Epic {'found' if epic else 'not resolved'}: {ticker} -> {epic}")
             time.sleep(0.3)
     except Exception as e:
         log.warning(f"Epic lookup failed for {ticker}: {e}")

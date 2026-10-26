@@ -1273,6 +1273,15 @@ def _yahoo_name(ticker: str) -> str:
     return name
 
 
+def _wrong_market(ticker: str, epic: str) -> bool:
+    """A UK share code (KA.D.) belongs only to a London (.L) ticker. MEASURED 2026-10-26: every one of the 61 non-.L
+    rows on KA.D. codes was another listing -- 56 a different company or product (TSMC -> TomCo Energy, PRU (US
+    Prudential Financial) -> Prudential plc, FOUR (Shift4) -> 4imprint), 5 the same company listed elsewhere (HSBC,
+    0005.HK, S32.AX, FERG, WPM). Even those are wrong for an order: the levels come from the scanned listing's prices --
+    0005.HK closed 142.50 HKD the day HSBA.L closed 1,352.00p (2026-10-23) -- so they would be placed ~9.5x away."""
+    return (not ticker.endswith(".L")) and str(epic or "").startswith("KA.D.")
+
+
 def get_epic(ticker: str) -> Optional[str]:
     """
     Return the IG epic code for a given ticker symbol.
@@ -1326,6 +1335,11 @@ def get_epic(ticker: str) -> Optional[str]:
         # unchecked, so stale wrong rows (AXP→AXP Energy, SPGI→Spain 35, TGT→11880 SA …) were
         # served and could be TRADED. Trust the row only when: Yahoo has no name (FX/index/
         # commodity), it's a verified override, or the IG and Yahoo names match.
+        if _wrong_market(ticker, cached_epic) and not _is_verified_epic(ticker, cached_epic):
+            # Refused, NOT purged: removing the existing wrong rows is the owner's call (2026-10-26).
+            log.error(f"get_epic {ticker}: cached epic {cached_epic} ({cached_desc!r}) is a UK share code for a "
+                      f"non-London ticker -- wrong listing, refusing")
+            return None
         if (not y_name) or _is_verified_epic(ticker, cached_epic) \
                 or instrument_names_match(ticker, cached_desc or "", y_name):
             log.info(f"Epic cache hit: {ticker} → {cached_epic}")
@@ -1461,6 +1475,11 @@ def get_epic(ticker: str) -> Optional[str]:
         except Exception:
             pass
         log.error(f"get_epic {ticker}: best match {best.get('epic')} is not a UK share epic — refusing")
+        return None
+
+    if _wrong_market(ticker, best.get("epic", "")):
+        log.error(f"get_epic {ticker}: best match {best.get('epic')} ({best.get('instrumentName')}) is a UK share "
+                  f"code for a non-London ticker -- wrong listing, refusing (not cached)")
         return None
 
     epic        = best["epic"]
