@@ -180,5 +180,9 @@ workflow file changes, put today's date in its `name:`.
   by £1,037.
 - **The weekly backup does not dump `price_history`'s rows** (owner, 2026-10-23: "yes") -- its definition only. The
   rows' backup is the verified price bars file on IONOS (`/home/www/data/price_bars`). Most of every dump's egress.
+- **Every Python package a job installs is pinned exactly in `constraints.txt`** (2026-10-26), applied by
+  `requirements.txt` and by every direct `pip install` (`test_scramp_pin.py`). An unpinned upstream release --
+  scramp 1.5.0, PyPI 2026-10-25 17:43Z -- broke every database login from 18:30 that day. Upgrade by changing
+  `constraints.txt` and passing the suite, never by letting a job pick up "latest".
 - **Secrets** live in Supabase `app_secrets`, GitHub and `.env`. Keep `.env` complete as a cold backup.
   The owner provides none in chat and does not expect to be asked.

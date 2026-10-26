@@ -1,4 +1,4 @@
-name: Setup Cron Jobs — reconcile / create / prune / status (2026-08-17)
+name: Setup Cron Jobs — reconcile / create / prune / status (2026-10-26)
 
 # --reconcile (default): PATCHes ONLY each existing job's schedule.
 #   Needs CRONJOB_API_KEY only. Use after changing cadence in setup_cronjobs.py.
@@ -48,7 +48,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - run: pip install requests
+      - run: pip install requests -c constraints.txt
       - name: Reconcile schedules
         if: ${{ github.event.inputs.mode == 'reconcile' || github.event.inputs.mode == '' }}
         run: python setup_cronjobs.py --reconcile

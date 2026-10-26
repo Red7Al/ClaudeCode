@@ -1,4 +1,4 @@
-name: Slack Webhook Test
+name: Slack Webhook Test (2026-10-26)
 
 on:
   workflow_dispatch:
@@ -18,7 +18,7 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
-      - run: pip install requests python-dotenv
+      - run: pip install requests python-dotenv -c constraints.txt
       - run: python run_slack_test.py
         env:
           SLACK_TRADES:   ${{ secrets.SLACK_TRADES }}

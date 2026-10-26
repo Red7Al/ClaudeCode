@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
           cache: 'pip'
-      - run: pip install pg8000 'scramp<1.5' python-dotenv cryptography
+      - run: pip install pg8000 'scramp<1.5' -c constraints.txt python-dotenv cryptography
       - run: python run_schema.py
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}

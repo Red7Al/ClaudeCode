@@ -247,6 +247,13 @@ def run_bridge() -> dict:
     return summary
 
 
+def main() -> int:
+    """The workflow's entry. An ABORTED pass exits 1 so the run shows red and Cron Watch emails: 2026-10-26 the
+    06:00 and 08:00 passes aborted (no database login) and the runs reported success, so nobody was told."""
+    summary = run_bridge()
+    return 1 if summary.get("aborted") else 0
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-    run_bridge()
+    raise SystemExit(main())

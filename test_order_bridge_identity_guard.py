@@ -63,3 +63,12 @@ def test_run_bridge_places_nothing_when_identity_is_unresolved(monkeypatch):
     assert placed == [], "the bridge placed an order despite an unusable duplicate guard"
     assert summary.get("placed", 0) == 0
     assert "aborted" in summary, "the abort was not reported in the pass summary"
+
+
+def test_an_aborted_pass_exits_1_so_the_run_shows_red(monkeypatch):
+    """2026-10-26: the 06:00 and 08:00 passes aborted (no database login) and the runs reported success."""
+    from hvf_web import order_bridge
+    monkeypatch.setattr(order_bridge, "run_bridge", lambda: {"candidates": 3, "aborted": "working_orders lookup failed"})
+    assert order_bridge.main() == 1
+    monkeypatch.setattr(order_bridge, "run_bridge", lambda: {"candidates": 3, "attempted": 0, "placed": 0})
+    assert order_bridge.main() == 0
