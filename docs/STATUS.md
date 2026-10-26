@@ -180,6 +180,12 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
 - Now the summary carries those rows with the table's write counter (`pg_stat_user_tables`) read before them;
   the website uses them only while the counter and the R:R cap are unchanged, else reads the table as before.
   Shadow by hand: 32,633 rows through the file's JSON, 0 different. Adds 4.25 MB to the summary on IONOS.
+  `3b82e9b`, deployed; summary rebuilt by hand (run 40414875545, 22:46Z): 11 sections, file version 667160 =
+  the table's counter. Web reads of those rows 22:17Z -> 23:07Z: none (the 3 in the window were the two shadow
+  runs and that build).
+- The summary build itself now reads the price bars file (`1e2cb13`): its `_perf_bars` calls were 70,085
+  `price_history` rows per build, twice a day. Shadow by hand on the live snapshot: 4 calls, 0 different. Run
+  40414875545: file CURRENT.
 - Also measured: one cold Scanner build (summary not yet installed for a new snapshot) is ~78,000 rows, 70,085
   of them price bars. Since the 22:17Z baseline the website has done none; the window between a snapshot install
   and its summary (~3 min on 10-26 evening) is the remaining exposure. Next: a full day's measurement.
