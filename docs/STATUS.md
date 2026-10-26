@@ -150,9 +150,20 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
 - Clean-up applied 2026-10-26: 89 rows deleted (61 non-London on `KA.D.`, 28 never-scanned tickers sharing a
   scanned ticker's code). Every removed row is kept in table `epic_lookup_removed` (with `removed_at`, `reason`).
   No working order referenced any of them. `epic_lookup` 2,286 -> 2,197.
-- Open: 35 codes are still shared where both tickers are scanned or neither is (e.g. LDO on USD/CAD, APA and
-  RMD on ASX codes, DJT/JXN on the Dow). They need the name check, not the listing rule; list goes to the owner
-  before any removal.
+- Measured 2026-10-26 (IG live price vs the ticker's last close): 13 SCANNED tickers sit on another
+  instrument's code -- APA (22x), RMD (14x), 0388.HK (13x), 0669.HK (15x), CT=F (on GBP/USD), ICGT.L (1.31x),
+  GBIL, TBIL, SPTI, SPTS, WIP, ISHG, GOLD. All but GOLD were written by `get_epic` itself: its name check passes
+  "APA Corporation" against "APA Group". Deleting them alone would not hold -- the next lookup re-caches the
+  same code. Proposed to the owner: a price check in `get_epic` before caching, then remove the 13 (backed up).
+  Awaiting his yes (bridge change). The other shared codes hold only tickers that are not scanned.
+
+## 2j. 2026-10-26 -- Winners precompute reads the price bars file (`c70690b`, deployed)
+
+- Morning Chain step 4 read 1,112,585 `price_history` rows per run (`_perf_bars`); the job never fetched the
+  file. Shadow by hand 16:48Z: 1,125,165 rows, 0 different. Live run 40366106448: file CURRENT, payloads
+  6,594 / 17,927 / 6,594 rows, as from the database.
+- Run 40365568001 just before it: `fetch_price_bars.sh` failed with SSH exit 255 once (same secrets worked in
+  the job's later step); the job fell back to the database as designed. Unexplained; watch for repeats.
 
 ## 3. Open, measured, not fixed
 
