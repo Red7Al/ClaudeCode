@@ -169,6 +169,20 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
   6,594 / 17,927 / 6,594 rows, as from the database.
 - Run 40365568001 just before it: `fetch_price_bars.sh` failed with SSH exit 255 once (same secrets worked in
   the job's later step); the job fell back to the database as designed. Unexplained; watch for repeats.
+  The 18:30 scan (run 40378425051) fetched it fine and it was CURRENT in both steps that read it.
+
+## 2k. 2026-10-26 -- squeeze_history from the summary file (egress plan step 4, first part)
+
+- MEASURED 10-23 15:15Z -> 10-26 22:17Z (`pg_stat_statements` difference): the website read the bridge-eligible
+  `squeeze_history` rows 55 times, 1,792,968 rows (~32,000 a read). Only the two refreshes write the table
+  (`refresh_daily` in the HVF report and in the evening publish), both before the summary is built, so the
+  reads were fresh web processes (deploys, recycles) starting with an empty cache.
+- Now the summary carries those rows with the table's write counter (`pg_stat_user_tables`) read before them;
+  the website uses them only while the counter and the R:R cap are unchanged, else reads the table as before.
+  Shadow by hand: 32,633 rows through the file's JSON, 0 different. Adds 4.25 MB to the summary on IONOS.
+- Also measured: one cold Scanner build (summary not yet installed for a new snapshot) is ~78,000 rows, 70,085
+  of them price bars. Since the 22:17Z baseline the website has done none; the window between a snapshot install
+  and its summary (~3 min on 10-26 evening) is the remaining exposure. Next: a full day's measurement.
 
 ## 3. Open, measured, not fixed
 

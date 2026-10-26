@@ -43,6 +43,7 @@ def build(snap: dict) -> dict:
         "volscore": server._snapshot_volscore(snap),
         "vwap_atr": server._live_vwap_atr(snap),
     }
+    sections["squeeze_history"] = squeeze_history_section()
     if sections["open_setups"] is None:
         raise RuntimeError("open trigger setups could not be read -- refusing to publish a summary without them")
     try:
@@ -53,6 +54,24 @@ def build(snap: dict) -> dict:
     return {"generated_utc": snap.get("generated_utc"),
             "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "sections": sections}
+
+
+def squeeze_history_section():
+    """The bridge-eligible squeeze_history rows (Best Settings, Results) with the table's write counter they were
+    read at; the web tier uses them only while the counter is unchanged (server._squeeze_history_from_summary).
+    None when the counter cannot be read -- the web then reads the table as before."""
+    from config import MAX_RISK_REWARD
+    from db_pool import get_db
+    from hvf_web import server
+    db = get_db()
+    try:
+        rows = server._squeeze_history_raw(db, MAX_RISK_REWARD)
+    finally:
+        db.close()
+    key = server._SQA_RAW["version"]         # the counter read BEFORE the rows: a later write only makes it stale
+    if key is None:
+        return None
+    return {"version": key[0], "maxrr": key[1], "rows": rows}
 
 
 def report_extras(snap: dict, open_setups: dict) -> dict:

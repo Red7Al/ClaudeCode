@@ -75,7 +75,7 @@ def test_every_section_the_builder_writes_is_read_by_a_helper():
     built = set(__import__("re").findall(r'"(\w+)": server\._', inspect.getsource(pub.build)))
     read = set(__import__("re").findall(r'_summary_section\("(\w+)"', src))
     built |= set(__import__("re").findall(r'sections\["(\w+)"\] = ', inspect.getsource(pub.build)))
-    assert built == read and len(built) == 10, (built, read)
+    assert built == read and len(built) == 11, (built, read)
 
 
 def test_a_deploy_never_ships_a_local_summary_over_the_hosts():
@@ -172,6 +172,7 @@ def test_a_failing_extras_step_does_not_cost_the_whole_summary(monkeypatch):
         monkeypatch.setattr(srv, name, lambda snap: {})
     monkeypatch.setattr(srv, "_mcap_map", lambda: {})
     monkeypatch.setattr(pub, "report_extras", lambda snap, s: 1 / 0)
+    monkeypatch.setattr(pub, "squeeze_history_section", lambda: None)
     out = pub.build({"generated_utc": "G", "records": []})
     assert out["sections"]["report_extras"] == {} and "open_setups" in out["sections"]
 
@@ -238,3 +239,41 @@ def test_fetch_ionos_evening_takes_only_a_plain_json_name(tmp_path):
         r = subprocess.run([bash, ".github/scripts/fetch_ionos_evening.sh", bad, str(tmp_path)],
                            capture_output=True, text=True, env={"PATH": __import__("os").environ["PATH"]})
         assert r.returncode == 2 and "refusing" in r.stderr, (bad, r.returncode, r.stderr)
+
+
+# A live squeeze_history row (read 2026-10-26) as the table returns it and as the summary file carries it.
+HICL = ["HICL.L", "FTSE 250", "daily-240", "BEARISH", 60.0, 4.68, 0.88, "STOPPED", -3.27, dt.date(2024, 4, 16),
+        dt.date(2024, 7, 5), 123.408156, 127.440673, 104.532955]
+
+
+class _CounterDb:
+    """squeeze_history's write counter is `counter`; reading the rows themselves is recorded."""
+    def __init__(self, counter):
+        self.counter, self.row_reads = counter, 0
+
+    def run(self, sql, **k):
+        if "pg_stat_user_tables" in sql:
+            return [[self.counter]]
+        self.row_reads += 1
+        return [list(HICL)]
+
+
+def _file_rows():
+    return [[str(v) if isinstance(v, dt.date) else v for v in HICL]]
+
+
+def test_squeeze_history_comes_from_the_file_while_the_table_is_unwritten(summary, monkeypatch):
+    """MEASURED 2026-10-23..26: 55 reads, 1,792,968 rows -- each fresh web process read ~32,000 rows. Shadow
+    2026-10-26: 32,633 rows through the file, 0 different."""
+    summary("any", squeeze_history={"version": 667160, "maxrr": 100.0, "rows": _file_rows()})
+    monkeypatch.setattr(server, "_SQA_RAW", {"version": None, "raw": None})
+    db = _CounterDb(667160)
+    assert server._squeeze_history_raw(db, 100.0) == [HICL]
+    assert db.row_reads == 0, "the table was read although the file holds exactly its rows"
+
+
+def test_a_write_since_the_build_reads_the_table(summary, monkeypatch):
+    summary("any", squeeze_history={"version": 667160, "maxrr": 100.0, "rows": _file_rows()})
+    monkeypatch.setattr(server, "_SQA_RAW", {"version": None, "raw": None})
+    db = _CounterDb(667161)
+    assert server._squeeze_history_raw(db, 100.0) == [HICL] and db.row_reads == 1

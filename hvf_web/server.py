@@ -4088,6 +4088,10 @@ def _squeeze_history_raw(db, maxrr):
     key = None if ver is None else (int(ver), maxrr)
     if key is not None and _SQA_RAW["version"] == key:
         return _SQA_RAW["raw"]
+    raw = _squeeze_history_from_summary(key)
+    if raw is not None:
+        _SQA_RAW.update(version=key, raw=raw)
+        return raw
     raw = db.run(
         "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
         "outcome, return_pct, triggered_date, outcome_date, entry_level, stop_level, target_level "
@@ -4095,6 +4099,24 @@ def _squeeze_history_raw(db, maxrr):
         "and risk_reward >= 3 and risk_reward <= :maxrr", maxrr=maxrr) or []
     _SQA_RAW.update(version=key, raw=raw)
     return raw
+
+
+def _squeeze_history_from_summary(key):
+    """The rows _squeeze_history_raw would read, from the summary file -- only when the table's write counter and
+    the R:R cap are those the file was built at, so the file holds exactly what the table holds; else None.
+    MEASURED 2026-10-23..26: 55 reads, 1,792,968 rows -- every fresh web process (deploys, recycles) read ~32,000
+    rows, though only the two refreshes write the table, both before the summary is built."""
+    sec = _summary_section("squeeze_history")
+    if key is None or not isinstance(sec, dict) or (sec.get("version"), sec.get("maxrr")) != key:
+        return None
+    rows = []
+    for r in sec.get("rows") or ():
+        r = list(r)
+        for i in (9, 10):                                   # triggered_date, outcome_date: ISO text in JSON
+            if r[i] is not None:
+                r[i] = _dt.date.fromisoformat(r[i])
+        rows.append(r)
+    return rows
 
 
 def _latest_closes(tickers: list) -> dict:
