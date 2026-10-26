@@ -210,3 +210,74 @@ def test_the_morning_report_fetches_todays_file_without_needing_the_bars_job():
     assert steps[fetch]["run"] == "bash .github/scripts/fetch_price_bars.sh on 600" and steps[fetch]["continue-on-error"]
     chain = yaml.safe_load(open(".github/workflows/trading-morning-chain.yml", encoding="utf-8"))
     assert chain["jobs"]["daily_report"]["needs"] == "price_refresh"
+
+
+class OhlcvDb(FakeDb):
+    """Also answers price_store.get_bars's single-ticker query, by running its filter."""
+    def run(self, sql, **kw):
+        if sql.startswith("select bar_date,open,high,low,close,volume from price_history where ticker=:t"):
+            self.bar_queries += 1
+            lo, hi = kw.get("start"), kw.get("end")
+            return [(r[1], r[2], r[3], r[4], r[5], r[6]) for r in sorted(self.rows, key=lambda r: r[1])
+                    if r[0] == kw["t"] and (lo is None or str(r[1]) >= lo) and (hi is None or str(r[1]) <= hi)]
+        if sql.lstrip().lower().startswith(("create", "alter", "select name, sql_hash", "insert into schema_migrations")):
+            return []
+        return super().run(sql, **kw)
+
+
+@pytest.mark.parametrize("start,end", [(None, None), ("2026-10-16", "2026-10-16"), (D(2026, 10, 17), None),
+                                       (dt.datetime(2026, 10, 1, 9), D(2026, 10, 19))])
+def test_get_bars_from_the_file_is_the_databases_answer_without_asking_it(bars_dir, monkeypatch, start, end):
+    """2026-10-26: 8,778 single-ticker get_bars reads in 2.75 days. By-hand shadow on the live file the same day:
+    150 calls, 63,346 rows, 0 different."""
+    import price_store
+    monkeypatch.setattr(price_store, "ensure_schema", lambda db: None)
+    monkeypatch.setenv("PRICE_BARS", "off")
+    ref = price_store.get_bars("BP.L", start, end, db=OhlcvDb(ROWS))
+    monkeypatch.setenv("PRICE_BARS", "on")
+    db = OhlcvDb(ROWS)
+    got = price_store.get_bars("BP.L", start, end, db=db)
+    assert db.bar_queries == 0
+    assert (ref is None and got is None) or ref.equals(got)
+
+
+def test_get_bars_open_is_the_files_own_open(bars_dir, monkeypatch):
+    import price_store
+    monkeypatch.setattr(price_store, "ensure_schema", lambda db: None)
+    monkeypatch.setenv("PRICE_BARS", "on")
+    other = [r[:2] + (1.0,) + r[3:] for r in ROWS]            # a database whose opens differ: the file must answer
+    db = OhlcvDb(other, probe=(len(ROWS), UPD2))
+    df = price_store.get_bars("BP.L", None, None, db=db)
+    assert list(df["Open"]) == [610.0, 615.0] and list(df["Close"]) == [614.099975585938, 616.400024414062]
+    assert db.bar_queries == 0
+
+
+def test_get_bars_shadow_names_a_difference(bars_dir, monkeypatch, caplog):
+    import price_store
+    monkeypatch.setattr(price_store, "ensure_schema", lambda db: None)
+    monkeypatch.setenv("PRICE_BARS", "shadow")
+    changed = [ROWS[0][:2] + (611.0,) + ROWS[0][3:]] + ROWS[1:]       # the database's open differs from the file's
+    price_store.get_bars("BP.L", None, None, db=OhlcvDb(changed, probe=(len(ROWS), UPD2)))
+    assert "PRICE-BARS SHADOW DIFFERENT (get_bars)" in caplog.text
+
+
+def test_a_write_in_this_process_sends_later_reads_to_the_database(bars_dir, monkeypatch):
+    """The version probe is asked once per process, so a job that writes bars and reads them back (the Price History
+    Audit corrects, then re-reads) must not get the file's pre-write values."""
+    import pandas as pd
+    import price_store
+    monkeypatch.setattr(price_store, "ensure_schema", lambda db: None)
+    monkeypatch.setattr(price_store, "_verify_wicks", lambda t, y, rows: (rows, []))
+    monkeypatch.setenv("PRICE_BARS", "on")
+    db = OhlcvDb(ROWS)
+    price_store.get_bars("BP.L", None, None, db=db)
+    assert db.bar_queries == 0                                     # the file answered
+    frame = pd.DataFrame({"Open": [1.0], "High": [2.0], "Low": [0.5], "Close": [1.5], "Volume": [10]},
+                         index=pd.to_datetime(["2026-10-19"]))
+    writes = []
+    db.run = (lambda orig: lambda sql, **kw: writes.append(sql) if sql.startswith("insert into price_history")
+              else orig(sql, **kw))(db.run)
+    price_store.upsert_bars("BP.L", frame, "YF", db=db)
+    assert writes
+    price_store.get_bars("BP.L", None, None, db=db)
+    assert db.bar_queries == 1                                     # after the write, the database answered

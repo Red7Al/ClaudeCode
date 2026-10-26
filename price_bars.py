@@ -35,7 +35,7 @@ import sys
 
 log = logging.getLogger(__name__)
 
-_STATE = {"dir": None, "by": None, "count": 0, "newest": "", "current": None}
+_STATE = {"dir": None, "by": None, "opens": None, "count": 0, "newest": "", "current": None}
 
 
 def mode() -> str:
@@ -44,7 +44,8 @@ def mode() -> str:
 
 
 def _load(dir_path):
-    """{ticker: [(bar_date, high, low, close, volume), ...] in date order}, the row count and the newest
+    """{ticker: [(bar_date, high, low, close, volume), ...] in date order}, {ticker: [open, ...]} aligned with those
+    rows (for price_store.get_bars, which returns OHLCV), the row count and the newest
     updated_at (text, microseconds -- sorts as time). The file's format is bars_file's (its names, columns and
     cell parser); grouped by ticker here rather than through bars_file.read, which keys every row by
     (ticker, date) -- 1.9 million keys this reader does not need."""
@@ -57,19 +58,22 @@ def _load(dir_path):
         if next(rd) != list(bars_file.COLUMNS):
             raise ValueError("price bars file has unexpected columns")
         for cells in rd:
-            tk, bd, _o, hi, lo, cl, vol, _src, _chk, upd = bars_file._row_in(cells)
+            tk, bd, op, hi, lo, cl, vol, _src, _chk, upd = bars_file._row_in(cells)
             day = dates.get(bd)
             if day is None:   # ~1,000 distinct dates across 1.9 million rows: parse each once
                 day = dates[bd] = dt.date.fromisoformat(bd)
-            by.setdefault(tk, []).append((day, hi, lo, cl, vol))
+            by.setdefault(tk, []).append((day, hi, lo, cl, vol, op))
             count += 1
             if upd > newest:
                 newest = upd
     if count != meta.get("rows"):
         raise ValueError(f"price bars file holds {count} rows, its metadata says {meta.get('rows')}")
-    for rows in by.values():
+    opens = {}
+    for tk, rows in by.items():
         rows.sort(key=lambda r: r[0])
-    return by, count, newest
+        opens[tk] = [r[5] for r in rows]
+        by[tk] = [r[:5] for r in rows]
+    return by, opens, count, newest
 
 
 def _ready(db) -> bool:
@@ -78,8 +82,8 @@ def _ready(db) -> bool:
     if _STATE["dir"] != dir_path:
         _STATE.update(dir=dir_path, by=None, current=None)
         try:
-            by, count, newest = _load(dir_path)
-            _STATE.update(by=by, count=count, newest=newest)
+            by, opens, count, newest = _load(dir_path)
+            _STATE.update(by=by, opens=opens, count=count, newest=newest)
             log.info("price bars file loaded: %s rows, newest stamp %s", f"{count:,}", newest)
         except Exception as exc:
             log.warning("price bars file unusable, reading the database: %s", exc)
@@ -172,6 +176,45 @@ def fetch_when_needed(want: str = "shadow") -> bool:
     os.environ["PRICE_BARS"] = want
     log.info("%s", r.stdout.strip()[-300:])
     return True
+
+
+def invalidate() -> None:
+    """This process is writing price_history, so the file no longer holds what the database holds: every later read in
+    this process asks the database (price_store calls this before each write). Without it, a job that writes bars and
+    reads them back -- the Price History Audit corrects then re-reads -- would read the file's pre-write values,
+    because the version probe is asked once per process."""
+    if _STATE["by"] is not None and _STATE["current"] is not False:
+        log.info("price bars file set aside for the rest of this process: price_history is being written")
+    _STATE["current"] = False
+
+
+def _ohlcv_from_file(ticker, start, end):
+    bars, opens = _STATE["by"].get(ticker, ()), _STATE["opens"].get(ticker, ())
+    lo = bisect.bisect_left(bars, start, key=lambda r: r[0]) if start else 0
+    hi = bisect.bisect_right(bars, end, key=lambda r: r[0]) if end else len(bars)
+    return [(b[0], o, b[1], b[2], b[3], b[4]) for b, o in zip(bars[lo:hi], opens[lo:hi])]
+
+
+def ohlcv(db, ticker, start, end, from_database):
+    """One ticker's [(bar_date, open, high, low, close, volume), ...] in date order, start..end inclusive (either may
+    be None) -- price_store.get_bars's rows. `from_database` is its own query. Same modes as serve()."""
+    m = mode()
+    if m == "off" or not _ready(db):
+        return from_database()
+    as_date = lambda d: None if d is None else (d if isinstance(d, dt.date) else dt.date.fromisoformat(str(d)[:10]))
+    if isinstance(start, dt.datetime):
+        start = start.date()
+    if isinstance(end, dt.datetime):
+        end = end.date()
+    file_out = _ohlcv_from_file(ticker, as_date(start), as_date(end))
+    if m == "on":
+        return file_out
+    db_out = [tuple(r) for r in (from_database() or [])]
+    diffs = _differences({ticker: db_out}, {ticker: file_out})
+    _record_shadow(len(db_out), bool(diffs))
+    if diffs:
+        log.warning("PRICE-BARS SHADOW DIFFERENT (get_bars): %s", "; ".join(diffs))
+    return db_out
 
 
 def serve(db, items, back, from_database):

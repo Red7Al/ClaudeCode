@@ -224,6 +224,8 @@ def upsert_bars(ticker, df, source, db=None, chunk=400, yahoo_symbol=None):
     written = 0
     try:
         ensure_schema(db)
+        import price_bars
+        price_bars.invalidate()   # this process's later reads must see what it writes
         for bd, f, was, now in fixes:
             # once per bar and field: the nightly refresh re-fetches the same bad bar for several days
             db.run("insert into price_corrections (ticker,bar_date,field,original,corrected,evidence) "
@@ -265,7 +267,10 @@ def get_bars(ticker, start=None, end=None, db=None):
             sql += " and bar_date<=:end"
             params["end"] = str(end)
         sql += " order by bar_date"
-        rows = db.run(sql, **params) or []
+        # The price bars file answers when it is current (price_bars; owner 2026-10-21 "read files, not the
+        # database"); otherwise this query, as before. 8,778 single-ticker reads 2026-10-23 -> 10-26.
+        import price_bars
+        rows = price_bars.ohlcv(db, ticker, start, end, lambda: db.run(sql, **params) or [])
     finally:
         if own:
             db.close()
@@ -304,6 +309,8 @@ def set_double_checked(ticker, bar_dates, db=None):
         for i, d in enumerate(dates):
             params[f"d{i}"] = d
             ph.append(f":d{i}")
+        import price_bars
+        price_bars.invalidate()
         db.run("update price_history set double_checked=true, updated_at=now() "
                f"where ticker=:t and bar_date in ({','.join(ph)})", **params)
     finally:
@@ -341,6 +348,8 @@ def prune_older_than(years=RETENTION_YEARS, db=None):
         ensure_schema(db)
         cutoff = retention_cutoff(db, years)
         before = db.run("select count(*) from price_history where bar_date < :c", c=cutoff)[0][0]
+        import price_bars
+        price_bars.invalidate()
         db.run("delete from price_history where bar_date < :c", c=cutoff)
     finally:
         if own:
