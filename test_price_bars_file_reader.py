@@ -294,3 +294,16 @@ def test_winners_precompute_reads_the_file():
     fetch = runs.index("bash .github/scripts/fetch_price_bars.sh on")
     assert fetch < [i for i, r in enumerate(runs) if "python run_winners_precompute.py" in r][0]
     assert steps[fetch]["continue-on-error"] is True and "if" not in steps[fetch]
+
+
+def test_the_report_summary_reads_the_file():
+    """MEASURED 2026-10-26: each summary build read 70,085 bar rows from the database (4 _perf_bars calls).
+    Shadow by hand on the live snapshot: 0 different."""
+    import yaml
+    wf = yaml.safe_load(open(".github/workflows/trading-report-summary.yml", encoding="utf-8"))
+    steps = wf["jobs"]["summary"]["steps"]
+    runs = [str(s.get("run", "")) for s in steps]
+    fetch = runs.index("bash .github/scripts/fetch_price_bars.sh on")
+    assert fetch < [i for i, r in enumerate(runs) if "python publish_report_summary.py" in r][0]
+    assert steps[fetch]["continue-on-error"] is True and "if" not in steps[fetch]
+    assert steps[fetch]["env"]["IONOS_SSH_KEY"] == "${{ secrets.IONOS_SSH_KEY }}"

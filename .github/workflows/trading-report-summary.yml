@@ -1,4 +1,4 @@
-name: Report Summary to IONOS (2026-10-21b)
+name: Report Summary to IONOS (2026-10-26)
 
 # Builds the Scanner Report's summary file and installs it on IONOS, so the website reads a flat file
 # instead of the database (owner, repeatedly; 2026-10-09: "The read should be once or twice per day as the
@@ -51,6 +51,15 @@ jobs:
           got=$(python -c "import json; print(json.load(open('hvf_web/snapshot.json', encoding='utf-8'))['generated_utc'])")
           echo "host snapshot $got, site serving $live"
           [ "$got" = "$live" ] || { echo "the host file is not the snapshot the site serves" >&2; exit 1; }
+
+      # The price bars file (owner 2026-10-21: read files, not the database; 2026-10-23: "move this live asap"). The
+      # build's _perf_bars calls read 70,085 price_history rows per summary, twice a day. Shadow by hand 2026-10-26
+      # on the live snapshot: 4 calls, 70,085 rows, 0 different. A failed fetch exports nothing: the database answers.
+      - name: Fetch the price bars file (on)
+        continue-on-error: true
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: bash .github/scripts/fetch_price_bars.sh on
 
       - name: Build and install the summary
         run: python publish_report_summary.py
