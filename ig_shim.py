@@ -1282,6 +1282,41 @@ def _wrong_market(ticker: str, epic: str) -> bool:
     return (not ticker.endswith(".L")) and str(epic or "").startswith("KA.D.")
 
 
+def _last_close(ticker: str) -> Optional[float]:
+    """The ticker's latest stored close from the last 14 days, through price_bars (the price bars file when it is
+    current, else at most ~10 rows of price_history). None when there is none -- never scanned, or no recent bar --
+    or on any error, in which case the price check is skipped exactly as the name check is without a name."""
+    try:
+        import price_bars
+        start = (datetime.now(timezone.utc) - timedelta(days=14)).date()
+        db = get_db()
+        try:
+            rows = price_bars.ohlcv(db, ticker, start, None, lambda: db.run(
+                "select bar_date, open, high, low, close, volume from price_history "
+                "where ticker = :t and bar_date >= :s order by bar_date", t=ticker, s=start))
+        finally:
+            db.close()
+        closes = [float(r[4]) for r in rows or () if r[4] is not None]
+        return closes[-1] if closes else None
+    except Exception as exc:
+        log.warning(f"get_epic {ticker}: no stored close for the price check ({exc})")
+        return None
+
+
+def _price_matches(market: dict, close: float) -> bool:
+    """IG's price for a search result sits within 8% of the ticker's last close, in the same units or x100 either way
+    (pence/cents). MEASURED 2026-10-26: 13 scanned tickers sat on another instrument's code that the name check let
+    through -- APA (Apache, close 51.90) on APA Group at 1,148 (22x); ICGT.L (1,374p) on ICG PLC at 1,799 (1.31x);
+    ISHG on SHY's code (1.10 after /100). Apache's own code was 5,173.5 (0.997 after /100). True when IG gives no
+    price: no evidence either way."""
+    bid, offer = market.get("bid"), market.get("offer")
+    px = [float(p) for p in (bid, offer) if p]
+    if not px or not close:
+        return True
+    ratio = (sum(px) / len(px)) / close
+    return any(0.92 <= ratio / scale <= 1.08 for scale in (1, 100, 0.01))
+
+
 def get_epic(ticker: str) -> Optional[str]:
     """
     Return the IG epic code for a given ticker symbol.
@@ -1461,6 +1496,30 @@ def get_epic(ticker: str) -> Optional[str]:
                     log.error(f"get_epic {ticker}: no candidate matches Yahoo name '{y_name}' "
                               f"(ticker + name search) — refusing")
                     return None
+
+    # Price check (owner 2026-10-26, "ok, please progress"): a name that shares one word is not the instrument. Only
+    # when the ticker has a recent stored close; the candidates are the same ones the name check allowed.
+    close = _last_close(ticker)
+    if close and not _price_matches(best, close):
+        priced = [m for m in markets if _price_matches(m, close)
+                  and (not y_name or instrument_names_match(ticker, m.get("instrumentName", ""), y_name))]
+        if priced:
+            wrong, best = best, max(priced, key=_epic_score)
+            log.warning(f"get_epic {ticker}: {wrong.get('epic')} ({wrong.get('instrumentName')}) is not at the last "
+                        f"close {close} -- taking {best.get('epic')} ({best.get('instrumentName')})")
+        else:
+            try:
+                from notify import alert_system_error
+                alert_system_error("EPIC_LOOKUP", "get_epic",
+                                   f"{ticker}: no IG search result trades near its last close {close} -- "
+                                   f"wrong-instrument risk, NOT cached, instrument skipped.",
+                                   detail=str([(m.get('epic'), m.get('instrumentName'), m.get('bid'))
+                                               for m in markets[:6]]))
+            except Exception:
+                pass
+            log.error(f"get_epic {ticker}: best match {best.get('epic')} ({best.get('instrumentName')}, bid "
+                      f"{best.get('bid')}) is not at the last close {close} -- refusing (not cached)")
+            return None
 
     if is_uk and not best.get("epic", "").startswith("KA.D."):
         # A .L ticker that cannot resolve to a UK share epic is a wrong-

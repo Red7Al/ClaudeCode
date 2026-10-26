@@ -154,8 +154,13 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
   instrument's code -- APA (22x), RMD (14x), 0388.HK (13x), 0669.HK (15x), CT=F (on GBP/USD), ICGT.L (1.31x),
   GBIL, TBIL, SPTI, SPTS, WIP, ISHG, GOLD. All but GOLD were written by `get_epic` itself: its name check passes
   "APA Corporation" against "APA Group". Deleting them alone would not hold -- the next lookup re-caches the
-  same code. Proposed to the owner: a price check in `get_epic` before caching, then remove the 13 (backed up).
-  Awaiting his yes (bridge change). The other shared codes hold only tickers that are not scanned.
+  same code. Owner 2026-10-26 "ok, please progress": `get_epic` now checks IG's price against the ticker's last
+  close (within 8%, units or x100) before caching -- close from `price_bars` (the file when current, else <=10
+  rows of `price_history`); no close, no check. The 13 rows were deleted (2,203 -> 2,190), kept in
+  `epic_lookup_removed`; no working order or IG position used them. Re-resolved live by hand: ICGT.L ->
+  `KA.D.GPE` (ICG Graphite Enterprise Trust), RMD -> `SG.D.RMD` (ResMed US); APA is refused (IG names it "Apache
+  Corp", the name check wants "APA Corporation") -- it has no code until a verified pin is added. 26 codes are
+  still shared, all by tickers outside this decision.
 
 ## 2j. 2026-10-26 -- Winners precompute reads the price bars file (`c70690b`, deployed)
 
