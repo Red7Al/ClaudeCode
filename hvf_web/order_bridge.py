@@ -144,14 +144,10 @@ def _already_working(owner: str = None) -> set:
     # Open positions, resolved to tickers through the same epic_lookup the account screens use.
     try:
         import ig_shim
-        from db_pool import get_db
-        db = get_db()
-        try:
-            epic2tk = {str(r[1]): r[0] for r in (db.run("select ticker, epic from epic_lookup") or []) if r[1]}
-        finally:
-            db.close()
+        raw = ig_shim.get_open_positions() or []
+        epic2tk = ig_shim.tickers_for_epics((p.get("market") or {}).get("epic") for p in raw)
         held = set()
-        for p in (ig_shim.get_open_positions() or []):
+        for p in raw:
             epic = str((p.get("market") or {}).get("epic") or "")
             tk = epic2tk.get(epic)
             if tk:

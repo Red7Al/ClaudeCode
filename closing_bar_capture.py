@@ -65,16 +65,11 @@ def held_today(user=None, on_date=None):
     job costs nothing on the days it has nothing to do."""
     from hvf_web import server
     import ig_shim
-    from db_pool import get_db
     user = user or server._OWNER
     on_date = str(on_date or dt.datetime.now(dt.timezone.utc).date())
-    db = get_db()
-    try:
-        epic2tk = {str(r[1]): r[0] for r in (db.run("select ticker, epic from epic_lookup") or []) if r[1]}
-    finally:
-        db.close()
     with ig_shim._IG_LOCK, ig_shim.acting_session(user):
         raw = ig_shim.get_open_positions() or []
+    epic2tk = ig_shim.tickers_for_epics((p.get("market") or {}).get("epic") for p in raw)
     out = []
     for p in raw:
         mk, pd = (p.get("market") or {}), (p.get("position") or {})

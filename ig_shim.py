@@ -1320,6 +1320,24 @@ def _price_matches(market: dict, close: float) -> bool:
     return any(0.92 <= ratio / scale <= 1.08 for scale in (1, 100, 0.01))
 
 
+def tickers_for_epics(epics) -> dict:
+    """{epic: ticker} from epic_lookup for ONLY the given epics -- the IG positions/orders in hand. Six readers each
+    read the whole table (2,199 rows) to name a handful of positions: 336,368 rows in 153 calls over 17 h, the
+    biggest query by rows (MEASURED 2026-10-27, pg_stat_statements). `order by ctid` keeps the whole-table scan's
+    answer where several tickers share an epic (last row wins): MEASURED identical for all 2,164 epics, and for each
+    of the 27 shared epics asked alone. Raises on a database error, as the whole-table read did."""
+    epics = sorted({str(e) for e in epics or () if e})
+    if not epics:
+        return {}
+    from db_pool import get_db
+    db = get_db()
+    try:
+        rows = db.run("select ticker, epic from epic_lookup where epic = any(:e) order by ctid", e=epics) or []
+    finally:
+        db.close()
+    return {str(e): t for t, e in rows if e}
+
+
 def get_epic(ticker: str) -> Optional[str]:
     """
     Return the IG epic code for a given ticker symbol.

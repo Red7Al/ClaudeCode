@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import config_store
+import ig_shim as _real_ig_shim
 from hvf_web import server
 
 
@@ -792,6 +793,8 @@ class _FakeIG:
 
     @staticmethod
     def get_account_info(): return {}
+
+    tickers_for_epics = staticmethod(_real_ig_shim.tickers_for_epics)   # the real lookup, on the fake database
 
 
 def _ig_account(monkeypatch, *, attach=None, placed="2026-08-18"):

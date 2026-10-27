@@ -6299,9 +6299,6 @@ def api_ig_account():
         from db_pool import get_db
         db = get_db()
         try:
-            for row in (db.run("select ticker, epic from epic_lookup") or []):
-                if row[1]:
-                    epic2tk[str(row[1])] = row[0]
             # Scoped to the requesting login (2026-09-12). This screen shows THEIR IG account, so
             # annotating it from another user's rows would attribute someone else's session and
             # placement date to an order of theirs. working_orders is multi-tenant -- see account_scope.
@@ -6375,6 +6372,12 @@ def api_ig_account():
         out["note"] = "Open positions are unavailable right now — try Refresh."
     elif not ord_ok:
         out["note"] = "Working orders are unavailable right now — try Refresh."
+    try:   # only the epics on this account, not the whole epic_lookup table (2026-10-27)
+        epic2tk = ig_shim.tickers_for_epics(
+            [(p.get("market") or {}).get("epic") for p in positions]
+            + [(w.get("workingOrderData") or {}).get("epic") or (w.get("marketData") or {}).get("epic") for w in orders])
+    except Exception as e:
+        log.warning(f"ig-account epic names failed: {e}")
 
     def _tk(epic, mk):   # short ticker for an epic (epic_lookup, else IG's instrument name, else epic)
         return epic2tk.get(str(epic)) or (mk.get("instrumentName") if mk else None) or epic or ""
@@ -6546,14 +6549,9 @@ def api_position_filter_audit():
         import ig_shim, order_filter_audit
         if ig_shim.session_for(name) is None:
             return jsonify({"positions": 0, "rows": [], "note": "No IG credentials for this user."})
-        from db_pool import get_db
-        db = get_db()
-        try:
-            epic2tk = {str(r[1]): r[0] for r in (db.run("select ticker, epic from epic_lookup") or []) if r[1]}
-        finally:
-            db.close()
         with ig_shim._IG_LOCK, ig_shim.acting_session(name):
             raw = ig_shim.get_open_positions() or []
+        epic2tk = ig_shim.tickers_for_epics((p.get("market") or {}).get("epic") for p in raw)
         positions = []
         for p in raw:
             mk, pd = (p.get("market") or {}), (p.get("position") or {})
