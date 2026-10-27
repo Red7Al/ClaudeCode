@@ -25,6 +25,7 @@ class _Db:
 
 def _wire(monkeypatch, db, markets, yahoo_name):
     monkeypatch.setattr(ig_shim, "get_db", lambda: db)
+    monkeypatch.setattr(ig_shim, "_EPIC_VERIFIED_OVERRIDES", {})     # these tests are about the search, not the pins
     monkeypatch.setattr(ig_shim, "_heuristic_epic", lambda t: None)
     monkeypatch.setattr(ig_shim, "_yahoo_name", lambda t: yahoo_name)
     monkeypatch.setattr(ig_shim.session, "get", lambda path, params=None, version=None: {"markets": markets})
@@ -97,6 +98,11 @@ def test_of_the_named_listings_the_one_at_the_price_is_taken(monkeypatch):
     _wire(monkeypatch, db, [APA_GROUP, APACHE], "APA Corporation")
     monkeypatch.setattr(ig_shim, "instrument_names_match", lambda *a: True)
     assert ig_shim.get_epic("APA") == "SA.D.APA.DAILY.IP"
+
+
+def test_apa_is_pinned_to_apache():
+    """Owner 2026-10-27: "yes" to the pin -- the search refuses APA (above), so only the pin gives it a code."""
+    assert ig_shim.get_epic("APA") == APACHE["epic"]
 
 
 def test_no_listing_near_the_price_is_refused_and_not_cached(monkeypatch):

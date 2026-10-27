@@ -161,6 +161,11 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
   `KA.D.GPE` (ICG Graphite Enterprise Trust), RMD -> `SG.D.RMD` (ResMed US); APA is refused (IG names it "Apache
   Corp", the name check wants "APA Corporation") -- it has no code until a verified pin is added. 26 codes are
   still shared, all by tickers outside this decision.
+- Owner 2026-10-27 "yes": APA is pinned to `SA.D.APA.DAILY.IP` (Apache Corp, 24 Hours) in
+  `ig_shim._EPIC_VERIFIED_OVERRIDES` -- IG's price 5167.8/5179.2 vs the last close 51.90 (x100, 0.997).
+- Noticed, not acted on: four pinned tickers still carry the wrong code in `epic_lookup` (GLD -> NewGold,
+  MSTR -> Morningstar ETF, PYPL -> YieldMax ETF, QBTS -> Defiance short ETF). `get_epic` never reads them (the pin
+  wins), but the six `epic2tk` maps built from `epic_lookup` do.
 
 ## 2j. 2026-10-26 -- Winners precompute reads the price bars file (`c70690b`, deployed)
 

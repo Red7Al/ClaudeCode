@@ -1237,6 +1237,9 @@ _EPIC_VERIFIED_OVERRIDES = {
     "QBTS": "SH.D.XPOAUUS.DAILY.IP",  # D-Wave Quantum Inc               — NOT the Defiance 2x short
     "RGTI": "SG.D.SNIIUS.DAILY.IP",   # Rigetti Computing Inc            — NOT the Defiance 2x short
     "GLD":  "SI.D.GLDUS.DAILY.IP",    # SPDR Gold Shares (US)            — NOT NewGold (JSE)
+    # Pinned 2026-10-27 (owner: "yes"). IG names it "Apache Corp", which fails the name check against
+    # "APA Corporation"; IG's price 5167.8/5179.2 is 0.997x the last close 51.90 at scale 100. NOT APA Group (ASX).
+    "APA":  "SA.D.APA.DAILY.IP",      # APA Corporation (ex-Apache)
 }
 
 
