@@ -53,5 +53,15 @@ def test_the_audit_emails_its_wrong_instrument_findings(monkeypatch):
     assert "GLD: epic_lookup has AR.D.GLDSJ.DAILY.IP" in sent[0]["text"]
 
 
+def test_the_audit_workflow_carries_an_email_sender():
+    """Without these the job logs "No email sender configured" and the email is skipped -- as the Closing Window's IG
+    pause emails were on 2026-10-27 (runs 40491593154, 40506969984)."""
+    import pathlib
+    wf = pathlib.Path(__file__).with_name(".github") / "workflows" / "trading-data-quality.yml"
+    text = wf.read_text(encoding="utf-8")
+    for name in ("YAHOO_USER", "YAHOO_APP_PASSWORD", "RESEND_API_KEY"):
+        assert f"{name}:" in text and "${{ secrets." + name + " }}" in text, name
+
+
 def test_nothing_found_sends_nothing(monkeypatch):
     assert _run_main(monkeypatch, [], [SPCX_ROW]) == []

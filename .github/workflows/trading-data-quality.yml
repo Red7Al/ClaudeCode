@@ -1,4 +1,4 @@
-name: Data Quality Audit (nightly — 2026-06-12)
+name: Data Quality Audit (nightly — 2026-10-27)
 
 # Nightly Yahoo-vs-IG price data audit (user 2026-06-12). Triggered by
 # cron-job.org via workflow_dispatch at 22:15 UTC Mon-Fri — NEVER add a
@@ -32,6 +32,10 @@ jobs:
       APP_SECRET_KEY:        ${{ secrets.APP_SECRET_KEY }}
       SLACK_ALERTS:          ${{ secrets.SLACK_ALERTS }}
       SLACK_SIGNALS:         ${{ secrets.SLACK_SIGNALS }}
+      # Findings are emailed (2026-10-27): without these the job logged "No email sender configured".
+      RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:            ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
