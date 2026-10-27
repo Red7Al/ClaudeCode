@@ -1,4 +1,4 @@
-name: Scanner Snapshot Publish (2026-10-23b)
+name: Scanner Snapshot Publish (2026-10-27b)
 
 # Heavy Scanner compute runs on the Actions worker, never on the IONOS web process. Scheduling remains in
 # cron-job.org (GitHub-native cron is banned); the admin Refresh button dispatches this workflow as well.
@@ -22,6 +22,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   SUPABASE_USER:                    ${{ secrets.SUPABASE_USER }}
   SUPABASE_DB_PASSWORD:             ${{ secrets.SUPABASE_DB_PASSWORD }}
+  RESEND_API_KEY:                   ${{ secrets.RESEND_API_KEY }}
+  YAHOO_USER:                       ${{ secrets.YAHOO_USER }}
+  YAHOO_APP_PASSWORD:               ${{ secrets.YAHOO_APP_PASSWORD }}
   APP_SECRET_KEY:                   ${{ secrets.APP_SECRET_KEY }}
   SUPABASE_SCANNER_PUBLISH_KEY:     ${{ secrets.SUPABASE_SCANNER_PUBLISH_KEY }}
   # Temporary publication route while Supabase Storage is unavailable. These are the same SSH

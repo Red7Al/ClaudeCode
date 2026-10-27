@@ -1,4 +1,4 @@
-name: Squeeze History Replay (on demand — 2026-08-25)
+name: Squeeze History Replay (on demand — 2026-10-27)
 
 # Rebuilds squeeze_history by replaying the HVF engine over stored price history. Triggered by hand via
 # workflow_dispatch — NEVER add a schedule: block (GitHub-native cron is banned, user directive
@@ -37,6 +37,9 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
       APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
       IG_API_KEY:           ${{ secrets.IG_API_KEY }}
       IG_USERNAME:          ${{ secrets.IG_USERNAME }}

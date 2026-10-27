@@ -1,4 +1,4 @@
-name: Thread Precompute (daily — 2026-10-22)
+name: Thread Precompute (daily — 2026-10-27)
 
 # Builds the X-thread text (lead tweet + numbered long-report parts) for every instrument that has a
 # card, and stores it as web_json_store key `thread_by_ticker`, because the web host CANNOT build it.
@@ -51,6 +51,9 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
       APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
       PYTHONIOENCODING:     utf-8
     steps:

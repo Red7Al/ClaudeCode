@@ -1103,12 +1103,53 @@ def alert_macro_gate_failed(reason: str, vix: float, yield_spread: float, sessio
     _send("alerts", blocks)
 
 
-def alert_system_error(session: str, component: str, summary: str, detail: str = ""):
+ALERT_EMAILS_PER_DAY = 10     # owner 2026-10-27: "140 is way too many" -- a hard ceiling across every job
+
+
+def _email_alert(subject: str, text: str) -> bool:
+    """Email a system alert (2026-10-27): Slack is not used (owner 2026-10-08), so alerts that only posted there reached
+    nobody. The same alert is emailed once per UTC day and at most ALERT_EMAILS_PER_DAY alerts a day in all, counted in
+    app_config (shared by every job, like the IG login pause). MEASURED 2026-10-27: no alert fired in 24 recent runs of
+    Closing Window, Order Bridge, Session Close and State Audit; the ceiling is for a fault that repeats every run.
+    No sender configured, or the count cannot be recorded: nothing is sent."""
+    if not (os.environ.get("RESEND_API_KEY")
+            or (os.environ.get("YAHOO_USER") and os.environ.get("YAHOO_APP_PASSWORD"))):
+        return False
+    import hashlib
+    import json
+    import config_store
+    key = f"alert_emails:{datetime.now(timezone.utc):%Y-%m-%d}"
+    sig = hashlib.sha1(subject.encode("utf-8")).hexdigest()[:12]
+    try:
+        sent = (json.loads(config_store.get_value(key, "") or "{}")).get("sent") or []
+    except ValueError:
+        sent = []
+    if sig in sent:
+        log.info(f"alert already emailed today, not repeated: {subject}")
+        return False
+    if len(sent) >= ALERT_EMAILS_PER_DAY:
+        log.warning(f"{ALERT_EMAILS_PER_DAY} alert emails already sent today -- not emailed: {subject}")
+        return False
+    if not config_store.set_value(key, json.dumps({"sent": sent + [sig]}), updated_by="notify"):
+        log.error(f"alert email count could not be recorded -- not emailed: {subject}")
+        return False
+    from trade_email import send_simple_email
+    return send_simple_email(subject=subject, text=text)
+
+
+def alert_system_error(session: str, component: str, summary: str, detail: str = "", email: bool = True):
     """
     Notify that a system-level error occurred during a session.
     Used for DB failures, scan errors, and unexpected zero-result scans.
-    Posts to #claude-trading-alerts.
+    Posts to #claude-trading-alerts, and emails (capped, _email_alert) unless email=False -- for a caller that
+    already emails the same message itself.
     """
+    if email:
+        try:
+            _email_alert(f"System alert: {component} - {summary}"[:200],
+                         f"Session: {session}\nComponent: {component}\nSummary: {summary}\n\n{detail or ''}\n\n{_ts()}")
+        except Exception as e:
+            log.error(f"system alert email failed: {e}")
     blocks = [
         {
             "type": "header",

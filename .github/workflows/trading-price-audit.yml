@@ -1,4 +1,4 @@
-name: Price History Audit (daily golden-dataset — 2026-06-29)
+name: Price History Audit (daily golden-dataset — 2026-10-27)
 
 # Daily audit + backfill of the Supabase price_history golden dataset (user 2026-06-29): re-fetch each
 # instrument's recent OHLCV from the source, compare to what is stored, record discrepancies, and UPSERT
@@ -30,6 +30,9 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
       APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
       # IG creds — the daily audit prefers IG as the truth (user 2026-06-29); without these it falls back
       # to YF-only (the IG cross-check is wrapped so a missing/failed IG session never breaks the audit).

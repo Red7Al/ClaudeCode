@@ -1,4 +1,4 @@
-name: Market Cap Backfill (weekly — 2026-08-25)
+name: Market Cap Backfill (weekly — 2026-10-27)
 
 # Refreshes market capitalisation for the whole universe into instrument_mcap (user 2026-08-25:
 # "mcap_backfill should probably be scheduled to run each week \ month"). Triggered by cron-job.org via
@@ -45,6 +45,9 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
       APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
       PYTHONIOENCODING:     utf-8
     steps:

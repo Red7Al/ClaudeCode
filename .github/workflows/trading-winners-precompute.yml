@@ -1,4 +1,4 @@
-name: Winners Precompute (daily — 2026-10-26)
+name: Winners Precompute (daily — 2026-10-27)
 
 # Builds the /api/winners payloads ahead of time so Best Settings does not pay for them on a user's first
 # visit. Triggered by cron-job.org via workflow_dispatch at 05:50 UTC Mon-Sat — NEVER add a schedule:
@@ -53,6 +53,9 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
       APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
       IG_API_KEY:           ${{ secrets.IG_API_KEY }}
       IG_USERNAME:          ${{ secrets.IG_USERNAME }}

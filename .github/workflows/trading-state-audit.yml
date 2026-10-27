@@ -1,4 +1,4 @@
-name: Trading State Audit (did the jobs actually do anything? 2026-09-12)
+name: Trading State Audit (did the jobs actually do anything? 2026-10-27)
 
 # Asserts EFFECTS, not exit codes. Every defect found in the week to 2026-09-12 looked healthy from outside:
 # the auto-closer ran 300 green passes and closed nothing, the sweep logged "marked 4 row(s) EXPIRED" and wrote
@@ -62,6 +62,9 @@ jobs:
           IG_ACCOUNT_ID:        ${{ secrets.IG_ACCOUNT_ID }}
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+          YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
           APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
           SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
         run: |

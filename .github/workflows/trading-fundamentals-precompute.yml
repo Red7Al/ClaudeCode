@@ -1,4 +1,4 @@
-name: Fundamentals Precompute (daily — 2026-10-22)
+name: Fundamentals Precompute (daily — 2026-10-27)
 
 # Fetches the Fundamentals and Broker-analysis panels for the whole universe and stores them, because the
 # web host CANNOT fetch them itself: /api/fundamentals and /api/broker used to call yfinance on the
@@ -40,6 +40,9 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
       APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
       PYTHONIOENCODING:     utf-8
     steps:

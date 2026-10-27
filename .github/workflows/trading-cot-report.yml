@@ -1,4 +1,4 @@
-name: Weekly COT Report (2026-06-07c)
+name: Weekly COT Report (2026-10-27c)
 
 # Scheduling: cron-job.org → workflow_dispatch ONLY. GitHub-native cron is BANNED
 # (user directive — see memory/feedback_scheduler.md). Intended schedule:
@@ -25,6 +25,9 @@ jobs:
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+          YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
           APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
           SLACK_WEEKLY:         ${{ secrets.SLACK_WEEKLY }}
           SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}

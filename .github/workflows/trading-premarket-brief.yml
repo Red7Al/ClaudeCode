@@ -1,4 +1,4 @@
-name: Sunday Pre-Open Commodity Scan (2026-06-07b)
+name: Sunday Pre-Open Commodity Scan (2026-10-27b)
 
 # Sunday-evening pre-open scan via PREMARKET_BRIEF, so the commodities that
 # reopen on the CME Globex Sunday session (Gold, Silver, Oil — plus 24/7 crypto
@@ -40,6 +40,9 @@ jobs:
           IG_ACCOUNT_ID:         ${{ secrets.IG_ACCOUNT_ID }}
           SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+          YAHOO_USER:            ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
           APP_SECRET_KEY:        ${{ secrets.APP_SECRET_KEY }}
           FRED_API_KEY:          ${{ secrets.FRED_API_KEY }}
           EIA_API_KEY:           ${{ secrets.EIA_API_KEY }}

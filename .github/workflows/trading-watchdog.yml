@@ -1,4 +1,4 @@
-name: Session Watchdog (2026-10-26)
+name: Session Watchdog (2026-10-27)
 
 # Scheduling: cron-job.org → workflow_dispatch (every 30min Mon-Fri, job id 7767389).
 # GitHub-native cron REMOVED — it is banned (unreliable) and was running this
@@ -31,6 +31,9 @@ jobs:
         env:
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+          YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
           APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
           SLACK_ALERTS:         ${{ secrets.SLACK_ALERTS }}
           SLACK_SIGNALS:        ${{ secrets.SLACK_SIGNALS }}

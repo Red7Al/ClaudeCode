@@ -1,4 +1,4 @@
-name: HVF Daily Report (2026-10-23b)
+name: HVF Daily Report (2026-10-27b)
 
 on:
   # Callable so trading-morning-chain.yml can run it in sequence (2026-09-05). The chain
@@ -110,6 +110,9 @@ jobs:
         env:
           SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+          YAHOO_USER:            ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
           APP_SECRET_KEY:        ${{ secrets.APP_SECRET_KEY }}
       # The price bars file for squeeze_history.refresh_daily (owner 2026-10-21: read files, not the database;
       # shadow 10-22/23 showed no difference). Waits up to 10 minutes
@@ -129,6 +132,9 @@ jobs:
           HVF_REPORT_MODE:       ${{ inputs.report_mode }}  # normal | slack_only | slack_png (user 2026-06-22)
           SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+          YAHOO_USER:            ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
           APP_SECRET_KEY:        ${{ secrets.APP_SECRET_KEY }}
           SUPABASE_SCANNER_PUBLISH_KEY: ${{ secrets.SUPABASE_SCANNER_PUBLISH_KEY }}
           # Publishing the snapshot ends with verify_current(), which is a READ and needs the
@@ -202,6 +208,9 @@ jobs:
         env:
           SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+          YAHOO_USER:            ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
           APP_SECRET_KEY:        ${{ secrets.APP_SECRET_KEY }}
 
       # Authoritative Best Settings review follows the current-metric repair, so its evidence cannot
@@ -212,4 +221,7 @@ jobs:
         env:
           SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+          YAHOO_USER:            ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
           APP_SECRET_KEY:        ${{ secrets.APP_SECRET_KEY }}

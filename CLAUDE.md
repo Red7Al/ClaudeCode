@@ -145,7 +145,11 @@ workflow file changes, put today's date in its `name:`.
   Last runs 2026-08-06. Do not re-enable them, do not "fix" anything that reports them missing, and do not
   raise them again. Session Watchdog skips any session whose cron-job.org job is disabled.
 - **Alerts go by EMAIL. Slack is no longer used** (owner, 2026-10-08). An alert that only posts to a
-  `SLACK_*` webhook reaches nobody. `run_cron_watch._notify` emails.
+  `SLACK_*` webhook reaches nobody. `run_cron_watch._notify` emails. **Every job emails the same way** (owner
+  2026-10-27: "use the same method"): the workflow passes `RESEND_API_KEY`, `YAHOO_USER`, `YAHOO_APP_PASSWORD`, and
+  the code calls `trade_email.send_simple_email` -- without them the job logs "No email sender configured" and
+  sends nothing. `notify.alert_system_error` emails too, **capped** (owner: "140 is way too many"): the same alert
+  once a UTC day, at most 10 a day in all (`notify.ALERT_EMAILS_PER_DAY`).
 - **Supabase free tier**: 500 MB database, 5 GB/month egress, **15-client session pool**. A `DELETE`
   frees nothing. Storage has returned 402 since 2026-08-16 (egress quota); the snapshot publishes to
   IONOS instead.

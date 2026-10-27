@@ -1,4 +1,4 @@
-name: Order Bridge (snapshot -> IG working orders, 2026-10-21)
+name: Order Bridge (snapshot -> IG working orders, 2026-10-27)
 
 # Database -> IG working-order bridge (hvf_web/order_bridge.py) for the FULL scanned universe.
 #
@@ -125,6 +125,9 @@ jobs:
           IG_ACCOUNT_ID:        ${{ secrets.IG_ACCOUNT_ID }}
           SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+          YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
           APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
         run: python run_working_order_sweep.py --apply
 
@@ -136,6 +139,9 @@ jobs:
           IG_ACCOUNT_ID:               ${{ secrets.IG_ACCOUNT_ID }}
           SUPABASE_USER:               ${{ secrets.SUPABASE_USER }}
           SUPABASE_DB_PASSWORD:        ${{ secrets.SUPABASE_DB_PASSWORD }}
+          RESEND_API_KEY:              ${{ secrets.RESEND_API_KEY }}
+          YAHOO_USER:                  ${{ secrets.YAHOO_USER }}
+          YAHOO_APP_PASSWORD:          ${{ secrets.YAHOO_APP_PASSWORD }}
           APP_SECRET_KEY:              ${{ secrets.APP_SECRET_KEY }}
           # Read-scoped Storage key: the bridge PULLS the published Scanner snapshot, never publishes.
           SUPABASE_SCANNER_WEB_KEY:    ${{ secrets.SUPABASE_SCANNER_WEB_KEY }}

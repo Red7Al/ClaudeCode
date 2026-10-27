@@ -1,4 +1,4 @@
-name: AUS HVF Watch (2-hourly) 2026-08-06
+name: AUS HVF Watch (2-hourly) 2026-10-27
 
 on:
   workflow_dispatch:
@@ -13,6 +13,9 @@ jobs:
     env:
       SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:            ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
       APP_SECRET_KEY:        ${{ secrets.APP_SECRET_KEY }}
       FRED_API_KEY:          ${{ secrets.FRED_API_KEY }}
       QUIVER_QUANT_API_KEY:  ${{ secrets.QUIVER_QUANT_API_KEY }}

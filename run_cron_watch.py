@@ -172,7 +172,7 @@ def _notify(subject: str, body: str) -> None:
     try:
         import notify
         notify.alert_system_error(session="Scheduled", component="cron-job.org / GitHub Actions",
-                                  summary=subject, detail=body)
+                                  summary=subject, detail=body, email=False)   # emailed below, uncapped
     except Exception as exc:
         log.error("Slack alert failed: %s", exc)
     try:

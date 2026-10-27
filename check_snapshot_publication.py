@@ -177,7 +177,7 @@ def _tell(subject: str, detail: str, alert: bool) -> None:
     try:
         import notify
         notify.alert_system_error(session="Scheduled", component="scanner_snapshot_store / Supabase Storage",
-                                 summary=subject, detail=detail)
+                                 summary=subject, detail=detail, email=False)   # emailed below
     except Exception as exc:
         log.error("Slack alert failed: %s", exc)
     try:

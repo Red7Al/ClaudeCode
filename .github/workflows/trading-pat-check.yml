@@ -1,4 +1,4 @@
-name: GH PAT Expiry Check (weekly — 2026-08-17)
+name: GH PAT Expiry Check (weekly — 2026-10-27)
 
 # Is GH_PAT still able to dispatch? Triggered by cron-job.org via workflow_dispatch at 07:00 UTC on
 # Sundays — NEVER add a schedule: block (GitHub-native cron is banned, user directive 2026-06-07).
@@ -36,6 +36,9 @@ jobs:
       # needs the full requirements and the Supabase creds even though it touches no trading data.
       SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RESEND_API_KEY:        ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:            ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:    ${{ secrets.YAHOO_APP_PASSWORD }}
       APP_SECRET_KEY:        ${{ secrets.APP_SECRET_KEY }}
     steps:
       - uses: actions/checkout@v6

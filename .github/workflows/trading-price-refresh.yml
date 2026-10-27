@@ -1,4 +1,4 @@
-name: Price Data Refresh (pre-report — 2026-08-07)
+name: Price Data Refresh (pre-report — 2026-10-27)
 
 # Split out from trading-price-audit.yml (ChangeRequest P-08, 2026-08-07: "the job names look peculiar" —
 # "Price Data Refresh" (04:30 UTC) and "Price History Audit" (23:00 UTC) were two differently-scheduled
@@ -52,6 +52,9 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
       APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
       # IG creds — prefers IG as the truth (user 2026-06-29); without these it falls back to YF-only (the
       # IG cross-check is wrapped so a missing/failed IG session never breaks the refresh).

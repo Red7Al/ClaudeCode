@@ -1,4 +1,4 @@
-name: Closing Window (capture the break bar, judge same-day opens, 2026-10-22)
+name: Closing Window (capture the break bar, judge same-day opens, 2026-10-27)
 
 # Runs every ten minutes through the trading day and does two things for whichever instruments are
 # inside their OWN exchange's closing window at that moment:
@@ -57,6 +57,9 @@ jobs:
     env:
       SUPABASE_USER:        ${{ secrets.SUPABASE_USER }}
       SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:           ${{ secrets.YAHOO_USER }}
+      YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
       APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
       IG_API_KEY:           ${{ secrets.IG_API_KEY }}
       IG_USERNAME:          ${{ secrets.IG_USERNAME }}

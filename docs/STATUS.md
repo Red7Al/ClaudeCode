@@ -178,6 +178,14 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
   audit now also EMAILS its identity, price and new pin findings (`_pin_sweep`: a pinned ticker cached on another
   code) and new absurd outcomes; nothing found, nothing sent. Tests red on the old code (0 emails, no pin sweep).
   The 10-26 run would have emailed 94 identity + 3 price + 8 pin findings. Verify at the next 22:15 run.
+  `7b1fdce` + `13cfc89` (workflow email sender), deployed.
+- MEASURED 10-27: jobs' emails were being skipped -- the IG pause emails logged "No email sender configured" in
+  Closing Window runs 40491593154 and 40506969984; 27 workflows that log in to IG or can raise an alert carried no
+  sender, and `notify.alert_system_error` posted only to Slack. Owner "use the same method": 26 workflows now pass
+  the sender as the Scanner Report email does (`trading-setup-cronjobs.yml` has no database and never alerts;
+  `trading-hvf-tests.yml` stays offline), and system alerts email -- capped once per alert per day, 10 a day in
+  all (owner: "140 is way too many"). No alert fired in 24 recent runs of Closing Window, Order Bridge, Session
+  Close and State Audit.
 - **INCIDENT 2026-10-27, caused by the agent's check:** it shares the production IG API key and ran ~1,700
   `/markets/{epic}` calls from 10:25Z at one per 2 s, carrying on through allowance refusals. At 10:51:16.187Z it
   was refused (`exceeded-api-key-allowance`); 0.8 s later the Closing Window job's login was refused for the same
