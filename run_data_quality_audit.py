@@ -21,7 +21,9 @@
 # reserve and caps each night's batch. Full UK universe coverage takes ~2 weeks per rotation.
 #
 # Output: rows upserted to data_quality_log; Slack summary in WEIGHT order (CRITICAL mismatches first, then by
-# phantom-wick count) — CRITICAL findings go to #alerts, otherwise a digest goes to #signals.
+# phantom-wick count) — CRITICAL findings go to #alerts, otherwise a digest goes to #signals. Slack is not used
+# (owner 2026-10-08), so since 2026-10-27 the wrong-instrument findings (identity, price, pin) and new absurd
+# outcomes are also EMAILED (_email_findings).
 #
 # Usage:
 #   python run_data_quality_audit.py            # auto batch size from allowance
@@ -303,6 +305,26 @@ def _identity_sweep_all_cached() -> list:
     return findings
 
 
+def _pin_sweep() -> list:
+    """A pinned ticker's cached epic_lookup row that is not its pin (2026-10-27). get_epic returns the pin, but the
+    epic->ticker maps and the readers that take epic_lookup directly use the row. MEASURED 2026-10-27: 8 of the 11
+    pinned tickers' rows were another instrument (GLD on NewGold, MSTR on a Morningstar ETF, PYPL on a YieldMax ETF).
+    Zero IG allowance."""
+    from db_pool import get_db
+    from ig_shim import _EPIC_VERIFIED_OVERRIDES as pins
+    db = get_db()
+    try:
+        cached = db.run("select ticker, epic, description from epic_lookup where ticker = any(:t)", t=list(pins)) or []
+    finally:
+        db.close()
+    findings = [{"ticker": t, "days_compared": 0, "close_max_dev_pct": None,
+                 "phantom_high_wicks": 0, "phantom_low_wicks": 0, "verdict": "PIN_MISMATCH",
+                 "detail": f"epic_lookup has {e} ('{d}') but the verified pin is {pins[t]}"}
+                for t, e, d in cached if e != pins[t]]
+    log.info(f"Pin sweep: {len(cached)} of {len(pins)} pinned tickers cached, {len(findings)} not on their pin")
+    return findings
+
+
 def _lookup_epics(tickers: list):
     """Read-only IG /markets search (user 2026-06-24): print every candidate market for each ticker
     so the correct epic can be picked for a human pin (ig_shim._EPIC_VERIFIED_OVERRIDES). Never trades,
@@ -409,6 +431,34 @@ def _absurd_outcomes(days: int = 400) -> list:
                         "outcome": oc or "", "faults": faults})
     out.sort(key=lambda r: (-len(r["faults"]), r["ticker"]))
     return out
+
+
+_EMAILED_VERDICTS = ("PIN_MISMATCH", "IDENTITY_MISMATCH", "CRITICAL_MISMATCH")
+
+
+def _email_findings(rows: list, fresh: list, backlog: int, window_days: int) -> bool:
+    """The audit's critical findings and new absurd outcomes, by EMAIL (2026-10-27). Alerts go by email; Slack is not
+    used (owner 2026-10-08) and both Slack posters return early, so nobody had received a finding: the 10-26 run
+    flagged 94 wrong-company codes (AAL on Alfabs Australia, DJT on the Dow). Nothing to report, nothing sent."""
+    critical = [r for r in rows if r.get("verdict") in _EMAILED_VERDICTS]
+    if not critical and not fresh:
+        return False
+    lines = []
+    for v in _EMAILED_VERDICTS:
+        hits = [r for r in critical if r["verdict"] == v]
+        if hits:
+            lines.append(f"{v} -- {len(hits)}")
+            lines += [f"  {r['ticker']}: {r.get('detail') or ''}" for r in hits]
+            lines.append("")
+    if fresh:
+        lines.append(f"ABSURD OUTCOMES -- {len(fresh)} new in {window_days} days ({backlog} in 400 days)")
+        lines += [f"  {r['ticker']} {r['triggered_date']} {r['outcome']}: {', '.join(r['faults'])}" for r in fresh]
+    subject = (f"Data Quality Audit: {len(critical)} wrong-instrument finding(s)"
+               + (f", {len(fresh)} new absurd outcome(s)" if fresh else ""))
+    from trade_email import send_simple_email
+    sent = send_simple_email(subject=subject, text="\n".join(lines))
+    log.info(f"Audit findings email {'sent' if sent else 'FAILED'}: {subject}")
+    return sent
 
 
 def _post_absurd_slack(fresh: list, backlog: int, window_days: int) -> None:
@@ -776,6 +826,10 @@ def main():
     # zero IG allowance). Runs after the price rotation so its findings join
     # the same weight-ordered digest.
     rows.extend(_identity_sweep_all_cached())
+    try:
+        rows.extend(_pin_sweep())
+    except Exception as e:
+        log.error(f"pin sweep failed: {e}")
 
     if rows:
         _save(rows)
@@ -800,6 +854,7 @@ def main():
         log.info("Absurd outcomes: none")
     if fresh:
         _post_absurd_slack(fresh, len(bad), _WINDOW_DAYS)
+    _email_findings(rows, fresh, len(bad), _WINDOW_DAYS)
 
     log.info(f"Audit complete: {len(rows)} tickers, allowance remaining {remaining}")
     try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)

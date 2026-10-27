@@ -174,7 +174,10 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
   are checked live (PYPL x99.5, MSTR x99.2 so far; ETH, SPCX, SYM answered but have no close).
 - The nightly Data Quality Audit's identity sweep already flags wrong codes (10-26 run 40411009387: 2,192 checked,
   94 name mismatches, incl. AAL -> Alfabs Australia, DJT -> the Dow, EOSE -> Ease2pay) but reports only to Slack
-  and returns early because Slack is off (`run_data_quality_audit.py:230`). Nobody has received it. To fix: email.
+  and returns early because Slack is off (`run_data_quality_audit.py:230`). Nobody has received it. Fixed: the
+  audit now also EMAILS its identity, price and new pin findings (`_pin_sweep`: a pinned ticker cached on another
+  code) and new absurd outcomes; nothing found, nothing sent. Tests red on the old code (0 emails, no pin sweep).
+  The 10-26 run would have emailed 94 identity + 3 price + 8 pin findings. Verify at the next 22:15 run.
 - **INCIDENT 2026-10-27, caused by the agent's check:** it shares the production IG API key and ran ~1,700
   `/markets/{epic}` calls from 10:25Z at one per 2 s, carrying on through allowance refusals. At 10:51:16.187Z it
   was refused (`exceeded-api-key-allowance`); 0.8 s later the Closing Window job's login was refused for the same
