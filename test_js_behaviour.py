@@ -4376,3 +4376,65 @@ def test_days_since_counts_whole_calendar_days_not_rounded_time():
         pin = (f"const _R=Date; Date=class extends _R{{constructor(...a){{super(...(a.length?a:['{clock}']))}}"
                f" static now(){{return _R.parse('{clock}')}}}};")
         assert run_js(pin, fn, "daysSince('2026-09-21')") == 17, f"at {clock}"
+
+
+# ------------------------------------------------------------------------------------------------------
+# Instruments "Last triggered" column (owner 2026-10-30: "in the list of instruments add a column to show
+# date of latest trigger date"). The date is the newest triggered_date among the instrument's Squeeze
+# History rows -- the rows the tab already loads -- so it always agrees with the Squeeze History tab.
+# Fixtures: squeeze_history's own rows for AAPL and TSCO.L, read 2026-10-30, in /api/squeeze-history's
+# order (coalesce(triggered_date, ready_date, first_seen) desc) -- not purely trigger-date order.
+# ------------------------------------------------------------------------------------------------------
+_SQH_FIXTURE = (
+    [{"ticker": "AAPL", "triggered_date": d} for d in
+     ["2026-05-01", "2025-08-06", "2025-08-06", "2025-08-01", None, None, "2025-06-13", None]]
+    + [{"ticker": "TSCO.L", "triggered_date": d} for d in
+       ["2026-10-08", "2026-10-08", "2026-10-08", "2026-09-14", "2026-07-21", "2024-04-26", "2024-04-22", None]]
+    + [{"ticker": "NEVER", "triggered_date": None}])
+
+
+@pytest.mark.parametrize("order", ["as_served", "reversed"])
+def test_last_triggered_is_each_instruments_newest_trigger(order):
+    rows = _SQH_FIXTURE if order == "as_served" else list(reversed(_SQH_FIXTURE))
+    out = run_js(f"let INSTR_FUNNEL=null, INSTR_LASTTRIG={{}};", _extract("_instrSetFunnel"),
+                 f"(_instrSetFunnel({json.dumps(rows)}), INSTR_LASTTRIG)")
+
+    assert out == {"AAPL": "2026-05-01", "TSCO.L": "2026-10-08"}, "never-triggered stays absent (shown —)"
+
+
+def test_instruments_table_has_one_cell_per_header_including_last_triggered():
+    html = client_html()
+    head = re.search(r'<tbody id="instr-rows">', html)
+    thead = html[html.rfind("<thead>", 0, head.start()): head.start()]
+    headers = re.findall(r'data-instrk="([a-z0-9_]+)"', thead)
+    body = _fn_body(client_source(), "paintInstruments")
+    row = body[body.index('vtable("instr-rows"'):]
+    cells = row[:row.index("No instruments match.")].count("<td")
+
+    assert "last_trig" in headers
+    assert headers.index("last_trig") == headers.index("quality") + 1
+    assert cells == len(headers) == 15
+    assert f'vtable("instr-rows"' in body and '}, 15, "No instruments match.")' in body
+    assert 'colspan="15" class="empty sqh-loading"' in head.string[head.start(): head.start() + 120]
+    assert body.count('colspan="15"') == 1, "the loading row must span the new column too"
+
+
+def test_instruments_asks_again_while_squeeze_history_is_warming():
+    """A cold server answers {warming:true}; the tab used to keep that empty list for the whole visit,
+    leaving every Last triggered cell blank."""
+    pre = textwrap.dedent("""
+        let LIMITED=false, AUTH="tok", INSTR_FUNNEL=null, INSTR_LASTTRIG={}, timers=[], painted=0;
+        const $=()=>null; function paintInstruments(){painted++;}
+        function setTimeout(fn,ms){timers.push(ms);}
+        let reply={rows:[],warming:true};
+        function fetch(){return Promise.resolve({ok:true,json:()=>Promise.resolve(reply)});}
+    """)
+    src = _extract("_instrSetFunnel") + _extract("renderInstruments")
+    out = run_js_async(pre, src,
+        "(renderInstruments(), new Promise(r=>setImmediate(()=>setImmediate(()=>r({f:INSTR_FUNNEL,t:timers})))))")
+    assert out == {"f": None, "t": [3000]}
+
+    out = run_js_async(pre.replace("warming:true", "warming:false").replace("rows:[]",
+                                   'rows:[{"ticker":"AAPL","triggered_date":"2026-05-01"}]'), src,
+        "(renderInstruments(), new Promise(r=>setImmediate(()=>setImmediate(()=>r({l:INSTR_LASTTRIG,t:timers})))))")
+    assert out == {"l": {"AAPL": "2026-05-01"}, "t": []}

@@ -4407,14 +4407,24 @@ function paintWinnersDims(dims, all){
 // Reuses the SAME global DATA array the Scanner already loads via /api/records (now enriched with
 // wk52_low/wk52_high, see server.py api_records()) — no extra fetch for the main table. The funnel-history
 // mini-table below it lazy-loads the authenticated /api/squeeze-history once and is cached in INSTR_FUNNEL.
-let INSTR_FUNNEL=null, instrSorts=[];
+// INSTR_LASTTRIG: {ticker: newest triggered_date} from those same Squeeze History rows -- the "Last triggered"
+// column (owner 2026-10-30), so it always agrees with the Squeeze History tab and costs no extra request.
+let INSTR_FUNNEL=null, INSTR_LASTTRIG={}, instrSorts=[];
+function _instrSetFunnel(rows){
+  INSTR_FUNNEL=rows; INSTR_LASTTRIG={};
+  for(const r of rows){const d=r.triggered_date;if(r.ticker&&d&&!(INSTR_LASTTRIG[r.ticker]>=d))INSTR_LASTTRIG[r.ticker]=d;}
+}
 function renderInstruments(){
   if($("instr-loginhint"))$("instr-loginhint").style.display=LIMITED?"":"none";
   if($("instr-funnel-wrap"))$("instr-funnel-wrap").style.display=AUTH?"":"none";
   if(AUTH&&INSTR_FUNNEL===null){
     INSTR_FUNNEL=[];
-    fetch("/api/squeeze-history",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]}).then(j=>{INSTR_FUNNEL=j.rows||[];paintInstrFunnel();})
-      .catch(()=>{INSTR_FUNNEL=[];paintInstrFunnel();});
+    // A cold server answers {warming:true} with no rows; ask again, as the Squeeze History tab does, rather
+    // than keep the empty list for the rest of the visit.
+    fetch("/api/squeeze-history",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]}).then(j=>{
+        if(j.warming){INSTR_FUNNEL=null;setTimeout(renderInstruments,3000);return;}
+        _instrSetFunnel(j.rows||[]);paintInstruments();})
+      .catch(()=>{_instrSetFunnel([]);paintInstruments();});
   }
   paintInstruments();
 }
@@ -4424,7 +4434,7 @@ function instrSort(k,add=false){
   document.querySelectorAll("th[data-instrk]").forEach(th=>{th.querySelector(".sarr")?.remove();const i=instrSorts.findIndex(s=>s.k===th.dataset.instrk);
     if(i>=0)th.insertAdjacentHTML("beforeend",` <span class="sarr">${instrSorts[i].d>0?"▲":"▼"}${instrSorts.length>1?i+1:""}</span>`);});
 }
-function _instrSortValue(row,key){return key==="rvol"?row.current_rvol:key==="above_vwap"?row.current_above_vwap:key==="atr_expanding"?row.current_atr_expanding:row[key];}
+function _instrSortValue(row,key){return key==="last_trig"?INSTR_LASTTRIG[row.ticker]:key==="rvol"?row.current_rvol:key==="above_vwap"?row.current_above_vwap:key==="atr_expanding"?row.current_atr_expanding:row[key];}
 function instrRvolCell(row){
   if(row.current_rvol!=null){const fallback=row.current_metric_status==="complete_nse_fallback"?" NSE-listed equivalent used for this BSE instrument.":row.current_metric_status==="complete_ticker_successor"?" Current successor ticker used for this retained instrument.":"";const date=(row.current_rvol_date?`RVOL from latest usable volume bar: ${row.current_rvol_date}`:"Current RVOL")+fallback;return `<span title="${_esc(date)}">${rvolCell(row.current_rvol)}</span>`;}
   const reason=row.current_metric_status==="delisted"?(row.current_metric_reason||"Instrument is delisted (not applicable)"):{no_price_history:"Price history unavailable — requires data repair",no_reported_volume:"No reported daily volume (not applicable)",insufficient_volume_history:"Insufficient volume history — requires data repair",not_calculated:"Current RVOL has not been calculated"}[row.current_metric_status]||"Current RVOL unavailable — requires data repair";
@@ -4504,7 +4514,7 @@ function paintInstruments(){
   if(!DATA_LOADED){
     if($("instr-count"))$("instr-count").innerHTML='<span class="muted">⏳ Data loading…</span>';
     if($("instr-viz"))$("instr-viz").innerHTML='';
-    if($("instr-rows"))$("instr-rows").innerHTML='<tr><td colspan="14" class="empty sqh-loading">⏳ Data loading…</td></tr>';
+    if($("instr-rows"))$("instr-rows").innerHTML='<tr><td colspan="15" class="empty sqh-loading">⏳ Data loading…</td></tr>';
     return;
   }
   const rows=DATA||[], q=(($("instr-search")||{}).value||"").trim().toLowerCase();
@@ -4539,13 +4549,14 @@ function paintInstruments(){
     <td>${locName(r.location)||""}</td><td>${r.market||""}</td><td>${r.sector||""}</td>
     <td>${ob(r.direction?`<span class="tag ${r.direction==="BULL"?"bull":"bear"}">${r.direction}</span>`:"")}</td>
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:"")}</td>
+    <td>${ob(INSTR_LASTTRIG[r.ticker]||"—")}</td>
     <td>${r.wk52_low!=null?f2(r.wk52_low):"—"}</td><td>${r.wk52_high!=null?f2(r.wk52_high):"—"}</td>
     <td>${ob(r.rr!=null?(+r.rr).toFixed(1):"")}</td>
     <td>${ob(instrRvolCell(r))}</td>
     <td>${ob(_tickCross(r.current_above_vwap))}</td>
     <td>${ob(_tickCross(r.current_atr_expanding))}</td>
     <td>${ob(volScoreCell(r.volume_score))}</td>
-    <td><b>${disp(r.ticker)}</b></td></tr>`;}, 14, "No instruments match.");
+    <td><b>${disp(r.ticker)}</b></td></tr>`;}, 15, "No instruments match.");
   paintInstrFunnel();
 }
 document.querySelectorAll("th[data-instrk]").forEach(th=>th.onclick=e=>instrSort(th.dataset.instrk,e.shiftKey));
