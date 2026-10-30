@@ -6310,6 +6310,16 @@ def api_ig_status():
     return jsonify({"no_creds": bool(no_creds)})
 
 
+def _position_pl(direction, open_lvl, to_lvl, size, csize):
+    """(money, %) for an open position if it closed at `to_lvl`: points x size x contractSize, direction-aware,
+    and the points as % of the open level. (None, None) when any input is missing. The one rule behind both
+    Profit (to the live close) and Stop P&L (to the stop) on IG Account, so the two cannot drift apart."""
+    if not open_lvl or to_lvl is None or size is None:
+        return None, None
+    pts = (to_lvl - open_lvl) if direction == "BUY" else (open_lvl - to_lvl)
+    return round(pts * size * csize, 2), round(pts / open_lvl * 100.0, 2)
+
+
 @app.route("/api/ig-account")
 def api_ig_account():
     """The acting user's OWN IG account (user 2026-07-10, IG Account tab): open positions + working
@@ -6435,12 +6445,10 @@ def api_ig_account():
         size = _num(pos.get("size"))
         csize = _num(pos.get("contractSize")) or 1.0
         close = _num(mk.get("bid")) if direction == "BUY" else _num(mk.get("offer"))
-        profit = profit_pct = None
-        if open_lvl and close is not None and size is not None:
-            pts = (close - open_lvl) if direction == "BUY" else (open_lvl - close)
-            profit = round(pts * size * csize, 2)
-            if open_lvl:
-                profit_pct = round(pts / open_lvl * 100.0, 2)
+        profit, profit_pct = _position_pl(direction, open_lvl, close, size, csize)
+        # What the stop locks in or loses if it is hit (owner 2026-09-18: "This stop loss amount and percentage
+        # needs to be shown in the table"). Same rule as profit, with the stop in place of the close.
+        stop_pl, stop_pl_pct = _position_pl(direction, open_lvl, _num(pos.get("stopLevel")), size, csize)
         out["positions"].append({
             "ticker": tk, "name": tk2name.get(tk) or mk.get("instrumentName") or tk,
             "market": tk2market.get(tk) or "",   # Market column (user 2026-08-03, P-10)
@@ -6448,6 +6456,7 @@ def api_ig_account():
             "size": pos.get("size"), "level": pos.get("level") or pos.get("openLevel"),
             "current": close, "profit": profit, "profit_pct": profit_pct,
             "currency": pos.get("currency"), "stop": pos.get("stopLevel"), "limit": pos.get("limitLevel"),
+            "stop_pl": stop_pl, "stop_pl_pct": stop_pl_pct,
             "opened": str(pos.get("createdDateUTC") or pos.get("createdDate") or "")[:19]})
     for w in orders:
         od, mk = (w.get("workingOrderData") or {}), (w.get("marketData") or {})

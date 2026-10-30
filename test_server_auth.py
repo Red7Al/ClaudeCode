@@ -839,6 +839,26 @@ def test_the_ig_working_orders_carry_the_setup_metrics(monkeypatch):
     assert (order["rvol"], order["above_vwap"], order["atr_expanding"]) == (1.9, True, False)
 
 
+def test_open_positions_carry_the_stop_amount_and_percentage(monkeypatch):
+    """Owner 2026-09-18: "This stop loss amount and percentage needs to be shown in the table". What the stop
+    locks in or loses if hit, on Profit's own basis: points x size x contractSize, direction-aware."""
+    def positions():
+        return [
+            {"position": {"dealId": "D1", "direction": "BUY", "level": 105, "size": 2, "contractSize": 1,
+                          "stopLevel": 100, "currency": "GBP"}, "market": {"epic": "EPIC1", "bid": 120, "offer": 121}},
+            {"position": {"dealId": "D2", "direction": "SELL", "level": 200, "size": 1, "contractSize": 1,
+                          "stopLevel": 190, "currency": "GBP"}, "market": {"epic": "EPIC1", "bid": 179, "offer": 180}},
+            {"position": {"dealId": "D3", "direction": "BUY", "level": 50, "size": 1, "contractSize": 1,
+                          "stopLevel": None, "currency": "GBP"}, "market": {"epic": "EPIC1", "bid": 51, "offer": 52}}]
+    monkeypatch.setattr(_FakeIG, "get_open_positions", staticmethod(positions))
+    rows = {p["deal_id"]: p for p in _ig_account(monkeypatch)["positions"]}
+
+    assert (rows["D1"]["stop_pl"], rows["D1"]["stop_pl_pct"]) == (-10.0, -4.76)   # long, stop under the open
+    assert (rows["D2"]["stop_pl"], rows["D2"]["stop_pl_pct"]) == (10.0, 5.0)      # short, stop moved into profit
+    assert (rows["D3"]["stop_pl"], rows["D3"]["stop_pl_pct"]) == (None, None)     # no stop: unknown, not zero
+    assert (rows["D1"]["profit"], rows["D1"]["profit_pct"]) == (30.0, 14.29)      # Profit unchanged by the refactor
+
+
 def test_the_metrics_come_from_the_shared_resolver(monkeypatch):
     """Not a second copy: two order screens quoting different numbers for one setup is the failure mode."""
     seen = []

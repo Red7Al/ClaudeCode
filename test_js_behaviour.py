@@ -1714,6 +1714,13 @@ def test_the_ig_positions_table_shows_mcap_next_to_market():
         f"MCap must sit immediately right of Market; order is {order[:6]}")
 
 
+def test_the_ig_positions_table_shows_the_stop_amount_and_percentage_after_the_stop():
+    """Owner 2026-09-18: "This stop loss amount and percentage needs to be shown in the table"."""
+    order = re.findall(r'data-igp="([a-z0-9_]+)"', _header_for(client_source(), "ig-pos-rows", 'data-igp="profit_pct"'))
+    i = order.index("stop")
+    assert order[i + 1:i + 3] == ["stop_pl", "stop_pl_pct"], f"order after Stop is {order[i:i + 4]}"
+
+
 def test_both_ig_position_rows_and_the_header_stay_in_step():
     """This table paints TWO row shapes into one header -- an open position and a closed trade -- so a
     column added to one alone shifts only half the table, which is harder to spot than shifting all of it.
