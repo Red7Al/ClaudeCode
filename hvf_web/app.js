@@ -4409,7 +4409,9 @@ function paintWinnersDims(dims, all){
 // mini-table below it lazy-loads the authenticated /api/squeeze-history once and is cached in INSTR_FUNNEL.
 // INSTR_LASTTRIG: {ticker: newest triggered_date} from those same Squeeze History rows -- the "Last triggered"
 // column (owner 2026-10-30), so it always agrees with the Squeeze History tab and costs no extra request.
-let INSTR_FUNNEL=null, INSTR_LASTTRIG={}, instrSorts=[];
+// INSTR_WARM_TRIES caps the warming retries at 2 minutes (40 x 3 s) -- ~4x the slowest cold build measured
+// (31.5 s, 2026-08-25) -- so a build that keeps failing is not asked for every 3 s for as long as the tab is open.
+let INSTR_FUNNEL=null, INSTR_LASTTRIG={}, instrSorts=[], INSTR_WARM_TRIES=0;
 function _instrSetHistory(rows){
   INSTR_FUNNEL=rows; INSTR_LASTTRIG={};
   for(const r of rows){const d=r.triggered_date;if(r.ticker&&d&&!(INSTR_LASTTRIG[r.ticker]>=d))INSTR_LASTTRIG[r.ticker]=d;}
@@ -4422,7 +4424,8 @@ function renderInstruments(){
     // A cold server answers {warming:true} with no rows; ask again, as the Squeeze History tab does, rather
     // than keep the empty list for the rest of the visit.
     fetch("/api/squeeze-history",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]}).then(j=>{
-        if(j.warming){INSTR_FUNNEL=null;setTimeout(renderInstruments,3000);return;}
+        if(j.warming&&++INSTR_WARM_TRIES<40){INSTR_FUNNEL=null;setTimeout(renderInstruments,3000);return;}
+        INSTR_WARM_TRIES=0;
         _instrSetHistory(j.rows||[]);paintInstruments();})
       .catch(()=>{_instrSetHistory([]);paintInstruments();});
   }
@@ -4508,6 +4511,16 @@ function vtable(id, rows, renderRow, cols, empty){
   }
   _vtablePaint(id);
 }
+// Blanks last whichever way, as genSort does: multiplying a blank's order by the direction put every blank
+// first on a descending sort (owner's Last triggered newest-first opened on 199 blank rows, 2026-10-30).
+function _instrCompare(a,b){
+  for(const s of instrSorts){const x=_instrSortValue(a,s.k),y=_instrSortValue(b,s.k);
+    const bx=x==null||x==="",by=y==null||y==="";
+    if(bx||by){if(bx!==by)return bx?1:-1;continue;}
+    const cmp=(typeof x==="number"&&typeof y==="number")?x-y:String(x).localeCompare(String(y));
+    if(cmp)return cmp*s.d;}
+  return 0;
+}
 function paintInstruments(){
   // This tab can be selected before the shared /api/records request completes.  Do not replace the
   // initial loading row with a misleading "No instruments match" result while DATA is still empty.
@@ -4531,10 +4544,7 @@ function paintInstruments(){
   if(!LIMITED)viz+=`<div class="vizsector">`+barChart("Direction",byX("inf_direction"),"inf_direction",k=>k==="BULL"?"var(--bull)":k==="BEAR"?"var(--bear)":"var(--muted)")+`</div>`;
   if($("instr-viz")){$("instr-viz").innerHTML=viz;packViz("instr-viz");}
   let shown=base.filter(r=>_idims.every(([id,fn])=>inSet(id,fn(r)||"—")));
-  if(instrSorts.length)shown=shown.slice().sort((a,b)=>{for(const s of instrSorts){const x=_instrSortValue(a,s.k),y=_instrSortValue(b,s.k);let cmp=0;
-    if(x==null||x==="")cmp=(y==null||y==="")?0:1;else if(y==null||y==="")cmp=-1;
-    else cmp=(typeof x==="number"&&typeof y==="number")?x-y:String(x).localeCompare(String(y));
-    if(cmp)return cmp*s.d;}return 0;});
+  if(instrSorts.length)shown=shown.slice().sort(_instrCompare);
   if($("instr-count"))$("instr-count").innerHTML=`<b style="font-size:15px;color:var(--fg)">${shown.length.toLocaleString()}</b> instruments${rows.length!==shown.length?` <span class="muted">of ${rows.length.toLocaleString()}</span>`:""}`;
   if($("instrtab-count"))$("instrtab-count").textContent=`(${shown.length.toLocaleString()})`;
   // Virtualised (user 2026-08-25: "not all rows are visible at once - why not deal with what is visible

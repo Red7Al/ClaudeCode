@@ -1521,7 +1521,7 @@ def test_approved_ui_report_backlog_is_wired_to_live_render_paths():
     html = __import__("client_source").client_source()
 
     assert 'id="scanner-name-search"' in html and 'syncScannerNameSearch(this.value)' in html
-    assert 'let INSTR_FUNNEL=null, INSTR_LASTTRIG={}, instrSorts=[];' in html
+    assert 'let INSTR_FUNNEL=null, INSTR_LASTTRIG={}, instrSorts=[], INSTR_WARM_TRIES=0;' in html
     assert 'e.shiftKey' in html and 'class="sarr"' in _extract_function(html, "instrSort")
     instrument_sort = _extract_function(html, "_instrSortValue")
     assert "row.current_rvol" in instrument_sort

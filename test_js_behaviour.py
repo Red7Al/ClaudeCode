@@ -4423,7 +4423,7 @@ def test_instruments_asks_again_while_squeeze_history_is_warming():
     """A cold server answers {warming:true}; the tab used to keep that empty list for the whole visit,
     leaving every Last triggered cell blank."""
     pre = textwrap.dedent("""
-        let LIMITED=false, AUTH="tok", INSTR_FUNNEL=null, INSTR_LASTTRIG={}, timers=[], painted=0;
+        let LIMITED=false, AUTH="tok", INSTR_FUNNEL=null, INSTR_LASTTRIG={}, INSTR_WARM_TRIES=0, timers=[], painted=0;
         const $=()=>null; function paintInstruments(){painted++;}
         function setTimeout(fn,ms){timers.push(ms);}
         let reply={rows:[],warming:true};
@@ -4438,3 +4438,34 @@ def test_instruments_asks_again_while_squeeze_history_is_warming():
                                    'rows:[{"ticker":"AAPL","triggered_date":"2026-05-01"}]'), src,
         "(renderInstruments(), new Promise(r=>setImmediate(()=>setImmediate(()=>r({l:INSTR_LASTTRIG,t:timers})))))")
     assert out == {"l": {"AAPL": "2026-05-01"}, "t": []}
+
+
+@pytest.mark.parametrize("direction", [1, -1])
+def test_instruments_sort_puts_blanks_last_both_ways(direction):
+    """2026-10-30: Last triggered sorted newest-first opened on the 199 instruments that never triggered,
+    because a blank's order was multiplied by the direction. Dates are live rendered values (III.L, ADM.L,
+    AAF.L); "NONE" is an instrument with no trigger."""
+    pre = textwrap.dedent(f"""
+        let INSTR_LASTTRIG={{"III.L":"2026-10-01","ADM.L":"2025-08-14","AAF.L":"2026-09-18"}};
+        let instrSorts=[{{k:"last_trig",d:{direction}}}];
+    """)
+    rows = [{"ticker": t} for t in ("NONE", "III.L", "ADM.L", "AAF.L")]
+    out = run_js(pre, _extract("_instrSortValue") + _extract("_instrCompare"),
+                 f"{json.dumps(rows)}.sort(_instrCompare).map(r=>r.ticker)")
+    dated = ["ADM.L", "AAF.L", "III.L"]
+    assert out == (dated if direction == 1 else dated[::-1]) + ["NONE"]
+
+
+def test_instruments_stops_asking_after_two_minutes_of_warming():
+    pre = textwrap.dedent("""
+        let LIMITED=false, AUTH="tok", INSTR_FUNNEL=null, INSTR_LASTTRIG={}, INSTR_WARM_TRIES=0, timers=[];
+        const $=()=>null; function paintInstruments(){}
+        let queued=null; function setTimeout(fn,ms){timers.push(ms);queued=fn;}
+        function fetch(){return Promise.resolve({ok:true,json:()=>Promise.resolve({rows:[],warming:true})});}
+        const tick=()=>new Promise(r=>setImmediate(()=>setImmediate(r)));
+        async function drive(){renderInstruments();await tick();
+          while(queued){const f=queued;queued=null;f();await tick();}
+          return {asks:timers.length+1, funnel:INSTR_FUNNEL};}
+    """)
+    out = run_js_async(pre, _extract("_instrSetHistory") + _extract("renderInstruments"), "drive()")
+    assert out == {"asks": 40, "funnel": []}
