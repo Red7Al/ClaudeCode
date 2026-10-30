@@ -25,7 +25,8 @@ printf '%s\n' "$IONOS_SSH_KEY" > "$key"; chmod 600 "$key"
 trap 'rm -f "$key"' EXIT
 ssh="ssh -i $key -p ${IONOS_PORT:-22} -o BatchMode=yes -o StrictHostKeyChecking=accept-new ${IONOS_USER}@${IONOS_HOST}"
 dir=/home/www/data/squeeze_history
-counter() { python -c "import json,sys; print(json.load(open(sys.argv[1], encoding='utf-8'))['version'])" "$1"; }
+# The counter is spliced into a command run on the host, so it must be digits only.
+counter() { python -c "import json,sys; v=json.load(open(sys.argv[1], encoding='utf-8'))['version']; assert isinstance(v, int) and v >= 0, v; print(v)" "$1"; }
 
 if [ "$mode" = "put" ]; then
   want=$(counter "$file")

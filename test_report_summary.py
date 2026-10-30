@@ -379,3 +379,17 @@ def test_the_jobs_after_the_write_fetch_the_file_before_reading():
         get = _index(steps, "squeeze_history_file.sh get")
         assert steps[get].get("continue-on-error") is True, (wf, "a failed fetch must leave the database path")
         assert get < _index(steps, reader), wf
+
+
+def test_squeeze_history_put_refuses_a_counter_that_is_not_digits(tmp_path):
+    """The counter is spliced into a command run on the IONOS host (review 2026-10-30)."""
+    import shutil, subprocess
+    bash = shutil.which("bash")
+    if not bash:
+        pytest.skip("no bash")
+    (tmp_path / "squeeze_history.json").write_text('{"version": "1; touch pwned", "rows": []}', encoding="utf-8")
+    env = dict(os.environ, RUNNER_TEMP=str(tmp_path), GITHUB_ENV=str(tmp_path / "env"), IONOS_SSH_KEY="x",
+               IONOS_USER="u", IONOS_HOST="invalid.invalid")
+    r = subprocess.run([bash, ".github/scripts/squeeze_history_file.sh", "put"], capture_output=True, text=True, env=env)
+    assert r.returncode != 0 and "AssertionError" in r.stderr, r.stderr
+    assert not (tmp_path / "env").exists(), "nothing may be exported after a refusal"
