@@ -4396,8 +4396,8 @@ _SQH_FIXTURE = (
 @pytest.mark.parametrize("order", ["as_served", "reversed"])
 def test_last_triggered_is_each_instruments_newest_trigger(order):
     rows = _SQH_FIXTURE if order == "as_served" else list(reversed(_SQH_FIXTURE))
-    out = run_js(f"let INSTR_FUNNEL=null, INSTR_LASTTRIG={{}};", _extract("_instrSetFunnel"),
-                 f"(_instrSetFunnel({json.dumps(rows)}), INSTR_LASTTRIG)")
+    out = run_js(f"let INSTR_FUNNEL=null, INSTR_LASTTRIG={{}};", _extract("_instrSetHistory"),
+                 f"(_instrSetHistory({json.dumps(rows)}), INSTR_LASTTRIG)")
 
     assert out == {"AAPL": "2026-05-01", "TSCO.L": "2026-10-08"}, "never-triggered stays absent (shown —)"
 
@@ -4429,7 +4429,7 @@ def test_instruments_asks_again_while_squeeze_history_is_warming():
         let reply={rows:[],warming:true};
         function fetch(){return Promise.resolve({ok:true,json:()=>Promise.resolve(reply)});}
     """)
-    src = _extract("_instrSetFunnel") + _extract("renderInstruments")
+    src = _extract("_instrSetHistory") + _extract("renderInstruments")
     out = run_js_async(pre, src,
         "(renderInstruments(), new Promise(r=>setImmediate(()=>setImmediate(()=>r({f:INSTR_FUNNEL,t:timers})))))")
     assert out == {"f": None, "t": [3000]}

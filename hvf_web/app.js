@@ -4410,7 +4410,7 @@ function paintWinnersDims(dims, all){
 // INSTR_LASTTRIG: {ticker: newest triggered_date} from those same Squeeze History rows -- the "Last triggered"
 // column (owner 2026-10-30), so it always agrees with the Squeeze History tab and costs no extra request.
 let INSTR_FUNNEL=null, INSTR_LASTTRIG={}, instrSorts=[];
-function _instrSetFunnel(rows){
+function _instrSetHistory(rows){
   INSTR_FUNNEL=rows; INSTR_LASTTRIG={};
   for(const r of rows){const d=r.triggered_date;if(r.ticker&&d&&!(INSTR_LASTTRIG[r.ticker]>=d))INSTR_LASTTRIG[r.ticker]=d;}
 }
@@ -4423,8 +4423,8 @@ function renderInstruments(){
     // than keep the empty list for the rest of the visit.
     fetch("/api/squeeze-history",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{rows:[]}).then(j=>{
         if(j.warming){INSTR_FUNNEL=null;setTimeout(renderInstruments,3000);return;}
-        _instrSetFunnel(j.rows||[]);paintInstruments();})
-      .catch(()=>{_instrSetFunnel([]);paintInstruments();});
+        _instrSetHistory(j.rows||[]);paintInstruments();})
+      .catch(()=>{_instrSetHistory([]);paintInstruments();});
   }
   paintInstruments();
 }
