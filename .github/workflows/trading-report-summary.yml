@@ -1,4 +1,4 @@
-name: Report Summary to IONOS (2026-10-26)
+name: Report Summary to IONOS (2026-10-30)
 
 # Builds the Scanner Report's summary file and installs it on IONOS, so the website reads a flat file
 # instead of the database (owner, repeatedly; 2026-10-09: "The read should be once or twice per day as the
@@ -60,6 +60,16 @@ jobs:
         env:
           IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
         run: bash .github/scripts/fetch_price_bars.sh on
+
+      # The squeeze history file (2026-10-30): the bridge-eligible squeeze_history rows at the table's write counter,
+      # used only while that counter is unchanged (server._squeeze_history_from_file); a failed fetch exports nothing
+      # and the job reads the database exactly as before. MEASURED 10-26 22:17Z -> 10-30 11:32Z: 34 reads /
+      # 1,111,532 rows, the biggest query by rows.
+      - name: Fetch the squeeze history file
+        continue-on-error: true
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: bash .github/scripts/squeeze_history_file.sh get
 
       - name: Build and install the summary
         run: python publish_report_summary.py

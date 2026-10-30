@@ -1,4 +1,4 @@
-name: Best Settings Full-grid Audit (2026-10-23b)
+name: Best Settings Full-grid Audit (2026-10-30)
 
 # cron-job.org dispatches this at 07:50 UTC Mon-Sat -- AFTER the HVF Daily Report has published
 # the day's snapshot (it starts 05:30 and takes 82-109 minutes). It used to run at 05:45, 15
@@ -45,4 +45,16 @@ jobs:
           IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
           IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
         run: bash .github/scripts/fetch_price_bars.sh on
+      # The squeeze history file (2026-10-30): the bridge-eligible squeeze_history rows at the table's write counter,
+      # used only while that counter is unchanged (server._squeeze_history_from_file); a failed fetch exports nothing
+      # and the job reads the database exactly as before. MEASURED 10-26 22:17Z -> 10-30 11:32Z: 34 reads /
+      # 1,111,532 rows, the biggest query by rows.
+      - name: Fetch the squeeze history file
+        continue-on-error: true
+        env:
+          IONOS_HOST:    ${{ secrets.IONOS_HOST }}
+          IONOS_USER:    ${{ secrets.IONOS_USER }}
+          IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: bash .github/scripts/squeeze_history_file.sh get
       - run: python run_best_settings_audit.py

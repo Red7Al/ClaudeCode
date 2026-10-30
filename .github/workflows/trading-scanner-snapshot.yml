@@ -1,4 +1,4 @@
-name: Scanner Snapshot Publish (2026-10-27b)
+name: Scanner Snapshot Publish (2026-10-30)
 
 # Heavy Scanner compute runs on the Actions worker, never on the IONOS web process. Scheduling remains in
 # cron-job.org (GitHub-native cron is banned); the admin Refresh button dispatches this workflow as well.
@@ -256,6 +256,19 @@ jobs:
         if: always()
         continue-on-error: true
         run: python check_snapshot_publication.py
+
+      # The squeeze history file (2026-10-30), written straight after this job's last write to squeeze_history so the
+      # steps and jobs after it read the file, not the table. Used only at the table's write counter
+      # (server._squeeze_history_from_file); on any failure nothing is exported and they read the database.
+      - name: Squeeze history file to IONOS
+        if: ${{ steps.publish.outcome == 'success' || steps.ionos_fallback.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          python publish_report_summary.py --squeeze-history-file "$RUNNER_TEMP/squeeze_history.json"
+          bash .github/scripts/squeeze_history_file.sh put
 
       - name: Warm the precomputed winners payloads
         if: ${{ steps.publish.outcome == 'success' || steps.ionos_fallback.outcome == 'success' }}

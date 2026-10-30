@@ -277,3 +277,105 @@ def test_a_write_since_the_build_reads_the_table(summary, monkeypatch):
     monkeypatch.setattr(server, "_SQA_RAW", {"version": None, "raw": None})
     db = _CounterDb(667161)
     assert server._squeeze_history_raw(db, 100.0) == [HICL] and db.row_reads == 1
+
+
+# ------------------------------------------------------------------------------------------------------
+# The squeeze history file (2026-10-30). MEASURED 10-26 22:17Z -> 10-30 11:32Z: 34 reads / 1,111,532 rows of
+# squeeze_history, the biggest query by rows -- the Morning Chain and the evening scan ran before the summary held
+# the table's new write counter, so every job between the write and the summary read the table itself.
+# ------------------------------------------------------------------------------------------------------
+class _ClosingCounterDb(_CounterDb):
+    def close(self):
+        pass
+
+
+def _no_summary(monkeypatch):
+    monkeypatch.setattr(server, "_summary_section", lambda *a, **k: None)
+    monkeypatch.setattr(server, "_SQA_RAW", {"version": None, "raw": None})
+
+
+def _write_file(tmp_path, monkeypatch, counter=667160):
+    """The file exactly as the writer job builds it: publish_report_summary.write_squeeze_history_file."""
+    import publish_report_summary
+    _no_summary(monkeypatch)
+    db = _ClosingCounterDb(counter)
+    monkeypatch.setattr("db_pool.get_db", lambda: db)
+    path = str(tmp_path / "squeeze_history.json")
+    assert publish_report_summary.write_squeeze_history_file(path) == 1
+    assert db.row_reads == 1, "the writer reads the table once"
+    return path
+
+
+def test_squeeze_history_file_round_trips_the_tables_rows(tmp_path, monkeypatch):
+    path = _write_file(tmp_path, monkeypatch)
+    monkeypatch.setenv("SQUEEZE_HISTORY_FILE", path)
+    _no_summary(monkeypatch)
+    db = _CounterDb(667160)
+
+    assert server._squeeze_history_raw(db, 100.0) == [HICL], "the file must give the table's rows, value for value"
+    assert db.row_reads == 0, "a later job read the table although the file holds exactly its rows"
+
+
+def test_squeeze_history_file_from_another_write_counter_is_not_used(tmp_path, monkeypatch):
+    path = _write_file(tmp_path, monkeypatch, counter=667160)
+    monkeypatch.setenv("SQUEEZE_HISTORY_FILE", path)
+    _no_summary(monkeypatch)
+    db = _CounterDb(667161)                    # written after the file was built
+
+    assert server._squeeze_history_raw(db, 100.0) == [HICL] and db.row_reads == 1
+
+
+def test_squeeze_history_file_for_another_rr_cap_is_not_used(tmp_path, monkeypatch):
+    path = _write_file(tmp_path, monkeypatch)
+    monkeypatch.setenv("SQUEEZE_HISTORY_FILE", path)
+    _no_summary(monkeypatch)
+    db = _CounterDb(667160)
+
+    server._squeeze_history_raw(db, 10.0)
+    assert db.row_reads == 1
+
+
+def test_an_unreadable_squeeze_history_file_reads_the_table(tmp_path, monkeypatch):
+    bad = tmp_path / "squeeze_history.json"
+    bad.write_text("{not json", encoding="utf-8")
+    monkeypatch.setenv("SQUEEZE_HISTORY_FILE", str(bad))
+    _no_summary(monkeypatch)
+    db = _CounterDb(667160)
+
+    assert server._squeeze_history_raw(db, 100.0) == [HICL] and db.row_reads == 1
+
+
+def _steps(path):
+    import yaml
+    jobs = yaml.safe_load(open(path, encoding="utf-8"))["jobs"]
+    return [s for j in jobs.values() for s in j.get("steps") or ()]
+
+
+def _index(steps, needle):
+    hits = [i for i, s in enumerate(steps) if needle in str(s.get("run") or "")]
+    assert len(hits) == 1, (needle, hits)
+    return hits[0]
+
+
+def test_the_jobs_that_write_squeeze_history_put_the_file_before_their_readers():
+    for wf, last_write, readers in (
+            ("trading-hvf-report.yml", "run_data_quality_audit.py --current-metrics-only",
+             ["run_best_settings_audit.py"]),
+            ("trading-scanner-snapshot.yml", "publish_scanner_snapshot.py --build",
+             ["run_winners_precompute.py", "run_best_settings_cards.py"])):
+        steps = _steps(".github/workflows/" + wf)
+        put = _index(steps, "squeeze_history_file.sh put")
+        assert "--squeeze-history-file" in steps[put]["run"]
+        assert _index(steps, last_write) < put, (wf, "the file must follow the table's last write")
+        for r in readers:
+            assert put < _index(steps, r), (wf, r)
+
+
+def test_the_jobs_after_the_write_fetch_the_file_before_reading():
+    for wf, reader in (("trading-winners-precompute.yml", "run_winners_precompute.py"),
+                       ("trading-best-settings-audit.yml", "run_best_settings_audit.py"),
+                       ("trading-report-summary.yml", "publish_report_summary.py")):
+        steps = _steps(".github/workflows/" + wf)
+        get = _index(steps, "squeeze_history_file.sh get")
+        assert steps[get].get("continue-on-error") is True, (wf, "a failed fetch must leave the database path")
+        assert get < _index(steps, reader), wf

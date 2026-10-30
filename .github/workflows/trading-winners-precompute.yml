@@ -1,4 +1,4 @@
-name: Winners Precompute (daily — 2026-10-27)
+name: Winners Precompute (daily — 2026-10-30)
 
 # Builds the /api/winners payloads ahead of time so Best Settings does not pay for them on a user's first
 # visit. Triggered by cron-job.org via workflow_dispatch at 05:50 UTC Mon-Sat — NEVER add a schedule:
@@ -126,6 +126,18 @@ jobs:
           IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
           IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
         run: bash .github/scripts/fetch_price_bars.sh on
+      # The squeeze history file (2026-10-30): the bridge-eligible squeeze_history rows at the table's write counter,
+      # used only while that counter is unchanged (server._squeeze_history_from_file); a failed fetch exports nothing
+      # and the job reads the database exactly as before. MEASURED 10-26 22:17Z -> 10-30 11:32Z: 34 reads /
+      # 1,111,532 rows, the biggest query by rows.
+      - name: Fetch the squeeze history file
+        continue-on-error: true
+        env:
+          IONOS_HOST:    ${{ secrets.IONOS_HOST }}
+          IONOS_USER:    ${{ secrets.IONOS_USER }}
+          IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
+          IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+        run: bash .github/scripts/squeeze_history_file.sh get
       - name: Build and store the winners payloads
         env:
           PRECOMPUTED_OUT: ${{ runner.temp }}/precomputed

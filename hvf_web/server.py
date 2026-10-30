@@ -4089,9 +4089,12 @@ def _squeeze_history_raw(db, maxrr):
     if key is not None and _SQA_RAW["version"] == key:
         return _SQA_RAW["raw"]
     raw = _squeeze_history_from_summary(key)
+    if raw is None:
+        raw = _squeeze_history_from_file(key)
     if raw is not None:
         _SQA_RAW.update(version=key, raw=raw)
         return raw
+    log.info("squeeze_history rows read from the database (write counter %s)", ver)
     raw = db.run(
         "select ticker, market, timeframe, hvf_type, quality, risk_reward, rvol, "
         "outcome, return_pct, triggered_date, outcome_date, entry_level, stop_level, target_level "
@@ -4106,7 +4109,33 @@ def _squeeze_history_from_summary(key):
     the R:R cap are those the file was built at, so the file holds exactly what the table holds; else None.
     MEASURED 2026-10-23..26: 55 reads, 1,792,968 rows -- every fresh web process (deploys, recycles) read ~32,000
     rows, though only the two refreshes write the table, both before the summary is built."""
-    sec = _summary_section("squeeze_history")
+    return _squeeze_history_rows_if_current(_summary_section("squeeze_history"), key)
+
+
+def _squeeze_history_from_file(key):
+    """As _squeeze_history_from_summary, from the squeeze history file a job fetched (SQUEEZE_HISTORY_FILE). The job
+    that writes the table writes this file straight after (publish_report_summary.py --squeeze-history-file), so
+    the jobs after it no longer each read the table: MEASURED 10-26 22:17Z -> 10-30 11:32Z, 34 reads / 1,111,532
+    rows, the biggest query by rows -- the Morning Chain and the evening scan ran before the summary held the
+    table's new counter. Same guard: used only at the table's write counter and R:R cap; else None."""
+    path = os.environ.get("SQUEEZE_HISTORY_FILE")
+    if not path or key is None:
+        return None
+    try:
+        with open(path, encoding="utf-8") as fh:
+            sec = json.load(fh)
+    except (OSError, ValueError) as e:
+        log.warning(f"squeeze history file unreadable, using the database: {e}")
+        return None
+    rows = _squeeze_history_rows_if_current(sec, key)
+    if rows is None:
+        log.info("squeeze history file is at counter %s, the table at %s: using the database",
+                 sec.get("version") if isinstance(sec, dict) else None, key[0])
+    return rows
+
+
+def _squeeze_history_rows_if_current(sec, key):
+    """sec's rows, dates parsed, when sec was built at `key` (write counter, R:R cap); else None."""
     if key is None or not isinstance(sec, dict) or (sec.get("version"), sec.get("maxrr")) != key:
         return None
     rows = []

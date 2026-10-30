@@ -4,6 +4,7 @@ the database (owner, repeatedly; 2026-10-09: "The read should be once or twice p
 are created on IONOS").
 
     python publish_report_summary.py [--snapshot hvf_web/snapshot.json] [--no-upload]
+    python publish_report_summary.py --squeeze-history-file PATH    # only the squeeze_history section, to PATH
 
 Runs in GitHub Actions after each snapshot publish and after the winners precompute (which fills the
 trigger-date store this reads). It calls the web tier's OWN helpers with the database, so the file holds
@@ -74,6 +75,23 @@ def squeeze_history_section():
     return {"version": key[0], "maxrr": key[1], "rows": rows}
 
 
+def write_squeeze_history_file(path: str) -> int:
+    """squeeze_history_section() alone, to `path`, for the jobs after the one that wrote the table (2026-10-30). Run
+    straight after the table's last write in that job; each later job uses it only at the table's write counter
+    (server._squeeze_history_from_file). Returns the row count; raises when the counter cannot be read."""
+    sec = squeeze_history_section()
+    if sec is None:
+        raise RuntimeError("squeeze_history write counter unavailable; no file written")
+    sec["built_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    tmp = path + ".new"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(sec, fh, separators=(",", ":"), default=str)
+    os.replace(tmp, path)
+    print(f"squeeze history file {path}: {len(sec['rows']):,} rows at write counter {sec['version']}, "
+          f"R:R cap {sec['maxrr']}, {os.path.getsize(path):,} bytes")
+    return len(sec["rows"])
+
+
 def report_extras(snap: dict, open_setups: dict) -> dict:
     """Now, P/E and Insider % for open setups the current scan does not carry (2026-10-10).
 
@@ -142,8 +160,12 @@ def main() -> int:
     ap.add_argument("--snapshot", default=os.path.join(ROOT, "hvf_web", "snapshot.json"))
     ap.add_argument("--out", default=os.path.join(ROOT, "hvf_web", SUMMARY_NAME))
     ap.add_argument("--no-upload", action="store_true")
+    ap.add_argument("--squeeze-history-file", help="write only the squeeze_history section to this path and stop")
     a = ap.parse_args()
     sys.path.insert(0, ROOT)
+    if a.squeeze_history_file:
+        write_squeeze_history_file(a.squeeze_history_file)
+        return 0
     with open(a.snapshot, encoding="utf-8") as fh:
         snap = json.load(fh)
     started = time.time()

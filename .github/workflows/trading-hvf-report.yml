@@ -1,4 +1,4 @@
-name: HVF Daily Report (2026-10-27b)
+name: HVF Daily Report (2026-10-30)
 
 on:
   # Callable so trading-morning-chain.yml can run it in sequence (2026-09-05). The chain
@@ -215,6 +215,22 @@ jobs:
 
       # Authoritative Best Settings review follows the current-metric repair, so its evidence cannot
       # describe a different post-refresh data state.
+      # The squeeze history file (2026-10-30), written straight after this job's last write to squeeze_history so the
+      # steps and jobs after it read the file, not the table. Used only at the table's write counter
+      # (server._squeeze_history_from_file); on any failure nothing is exported and they read the database.
+      - name: Squeeze history file to IONOS
+        if: success()
+        continue-on-error: true
+        env:
+          SUPABASE_USER:         ${{ secrets.SUPABASE_USER }}
+          SUPABASE_DB_PASSWORD:  ${{ secrets.SUPABASE_DB_PASSWORD }}
+          APP_SECRET_KEY:        ${{ secrets.APP_SECRET_KEY }}
+          IONOS_SSH_KEY:         ${{ secrets.IONOS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          python publish_report_summary.py --squeeze-history-file "$RUNNER_TEMP/squeeze_history.json"
+          bash .github/scripts/squeeze_history_file.sh put
+
       - name: Run persisted Best Settings full-grid audit
         if: success()
         run: python run_best_settings_audit.py
