@@ -1516,6 +1516,15 @@ def test_scanner_report_shows_vwap_and_atr_instead_of_hiding_rows():
     assert "_tickCross(r.above_vwap)" in html and "_tickCross(r.atr_expanding)" in html, "the columns must still be shown"
 
 
+def test_scanner_name_search_sits_at_the_top_of_the_page():
+    """Owner 2026-09-29: "move instrument name search from top of table to below 'Refresh button' towards
+    top of page". It must come before the page title and the charts, not on the table's count row."""
+    html = __import__("client_source").client_source()
+    view = html[html.index('id="view-scanner"'):]
+    search = view.index('id="scanner-name-search"')
+    assert search < view.index("<h1") < view.index('id="viz"'), "the name search is not at the top of the Scanner"
+
+
 def test_approved_ui_report_backlog_is_wired_to_live_render_paths():
     """Structural regression coverage for the 2026-08-13 approved UI/report stage."""
     html = __import__("client_source").client_source()
