@@ -33,6 +33,12 @@ if [ "$mode" = "put" ]; then
   $ssh "umask 077; mkdir -p $dir; cat > $dir/squeeze_history.json.new" < "$file"
   $ssh "set -eu; python3 -c \"import json,sys; d=json.load(open('$dir/squeeze_history.json.new', encoding='utf-8')); sys.exit(0 if str(d.get('version')) == '$want' else 3)\"; mv -f $dir/squeeze_history.json.new $dir/squeeze_history.json"
   echo "squeeze history file on IONOS at write counter $want ($(stat -c %s "$file") bytes)"
+  # The website's copy (2026-10-30): /home/www/data is mode 700, so the web reads its own data folder, installed
+  # like the precomputed payloads it already reads (keep_precomputed_on_ionos.sh): group www-data, mode 640.
+  [ -n "${IONOS_DIR:-}" ] || { echo "IONOS_DIR not set: the website's copy was not installed" >&2; exit 1; }
+  web="$IONOS_DIR/data/squeeze_history.json"
+  $ssh "set -eu; umask 027; cp -f $dir/squeeze_history.json '$web.new'; chgrp www-data '$web.new' 2>/dev/null || true; chmod 640 '$web.new'; mv -f '$web.new' '$web'"
+  echo "website copy installed at $web"
 else
   $ssh "cat $dir/squeeze_history.json" > "$file.new"
   want=$($ssh "stat -c %s $dir/squeeze_history.json")

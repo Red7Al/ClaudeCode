@@ -4112,13 +4112,19 @@ def _squeeze_history_from_summary(key):
     return _squeeze_history_rows_if_current(_summary_section("squeeze_history"), key)
 
 
+# The website's copy, installed by squeeze_history_file.sh put next to the precomputed payloads (2026-10-30): it
+# covers the gap between a chain's write to squeeze_history and its summary rebuild, when every fresh web process
+# read the table (DERIVED ~9 of the 34 reads 10-26 22:17Z -> 10-30 11:32Z). Jobs set SQUEEZE_HISTORY_FILE instead.
+_SQH_WEB_FILE = os.path.join(_DATA_DIR, "squeeze_history.json")
+
+
 def _squeeze_history_from_file(key):
     """As _squeeze_history_from_summary, from the squeeze history file a job fetched (SQUEEZE_HISTORY_FILE). The job
     that writes the table writes this file straight after (publish_report_summary.py --squeeze-history-file), so
     the jobs after it no longer each read the table: MEASURED 10-26 22:17Z -> 10-30 11:32Z, 34 reads / 1,111,532
     rows, the biggest query by rows -- the Morning Chain and the evening scan ran before the summary held the
     table's new counter. Same guard: used only at the table's write counter and R:R cap; else None."""
-    path = os.environ.get("SQUEEZE_HISTORY_FILE")
+    path = os.environ.get("SQUEEZE_HISTORY_FILE") or (_SQH_WEB_FILE if os.path.exists(_SQH_WEB_FILE) else None)
     if not path or key is None:
         return None
     try:

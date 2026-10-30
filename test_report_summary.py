@@ -393,3 +393,30 @@ def test_squeeze_history_put_refuses_a_counter_that_is_not_digits(tmp_path):
     r = subprocess.run([bash, ".github/scripts/squeeze_history_file.sh", "put"], capture_output=True, text=True, env=env)
     assert r.returncode != 0 and "AssertionError" in r.stderr, r.stderr
     assert not (tmp_path / "env").exists(), "nothing may be exported after a refusal"
+
+
+def test_the_website_reads_its_copy_of_the_squeeze_history_file(tmp_path, monkeypatch):
+    """The web tier sets no SQUEEZE_HISTORY_FILE; it reads data/squeeze_history.json, installed by the put step, in
+    the gap between a chain's write to the table and its summary rebuild (2026-10-30)."""
+    path = _write_file(tmp_path, monkeypatch)
+    monkeypatch.delenv("SQUEEZE_HISTORY_FILE", raising=False)
+    monkeypatch.setattr(server, "_SQH_WEB_FILE", path)
+    _no_summary(monkeypatch)
+    db = _CounterDb(667160)
+
+    assert server._squeeze_history_raw(db, 100.0) == [HICL] and db.row_reads == 0
+
+
+def test_without_the_websites_copy_the_table_is_read(tmp_path, monkeypatch):
+    monkeypatch.delenv("SQUEEZE_HISTORY_FILE", raising=False)
+    monkeypatch.setattr(server, "_SQH_WEB_FILE", str(tmp_path / "absent.json"))
+    _no_summary(monkeypatch)
+    db = _CounterDb(667160)
+
+    assert server._squeeze_history_raw(db, 100.0) == [HICL] and db.row_reads == 1
+
+
+def test_put_installs_the_websites_copy_where_the_web_tier_looks():
+    sh = open(".github/scripts/squeeze_history_file.sh", encoding="utf-8").read()
+    assert 'web="$IONOS_DIR/data/squeeze_history.json"' in sh and "chmod 640" in sh and "chgrp www-data" in sh
+    assert server._SQH_WEB_FILE == os.path.join(server._DATA_DIR, "squeeze_history.json")
