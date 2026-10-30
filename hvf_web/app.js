@@ -1108,6 +1108,20 @@ let FEATURES={xposts:false};
 const PREORDERS_TO_IG_ENABLED=false;   // server-side enforcement mirrors this UI gate
 let AUTH=localStorage.getItem("sq_auth")||"";
 let ROLE="guest", IS_ADMIN=false, IS_SUPPORT=false, HIDDEN_TABS=[], SHOWN_TABS=[];
+// Tab Visibility survives a failed settings read (owner 2026-09-18: every tab visible "despite my settings hiding
+// some sections"). MEASURED 2026-10-30 on the deployed page with his live payload: /api/config answering -> 10 tabs;
+// /api/config answering 500 -> 19, all 10 of his hidden tabs back, because a failed read was taken as "nothing
+// hidden". The last choices this browser loaded for this login are kept and used when the read fails.
+const _TABVIS_KEY="sq_tabvis:"+AUTH;
+let _tabVisRead=false;   // this page load read the choices from /api/config
+function tabVisRemember(hidden,shown){if(!AUTH)return;try{localStorage.setItem(_TABVIS_KEY,JSON.stringify({hidden,shown}));}catch(e){}}
+// {hidden, shown} from a /api/config answer (and remembered), else this login's remembered choices, else null.
+function tabVisFrom(cfg){
+  if(cfg&&Array.isArray(cfg.hidden_tabs)){const tv={hidden:cfg.hidden_tabs,shown:cfg.shown_tabs||[]};tabVisRemember(tv.hidden,tv.shown);return tv;}
+  if(!AUTH)return null;
+  try{const c=JSON.parse(localStorage.getItem(_TABVIS_KEY)||"null");if(c&&Array.isArray(c.hidden))return {hidden:c.hidden,shown:c.shown||[]};}catch(e){}
+  return null;
+}
 // Which tabs the current session may see (login + role + per-user tab-visibility choices).
 function tabAllowed(t){
   if(t==="orderops"&&!PREORDERS_TO_IG_ENABLED)return false;
@@ -1764,7 +1778,7 @@ function saveTabVis(){
   const shown=boxes.filter(c=>c.checked&&DEFAULT_HIDDEN.has(c.dataset.t)).map(c=>c.dataset.t);   // opt-in for default-hidden tabs
   const st=saveStatus("tabvis-msg");
   fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json","X-Auth":AUTH},body:JSON.stringify({hidden_tabs:hidden,shown_tabs:shown})})
-    .then(r=>{if(!r.ok)throw 0;HIDDEN_TABS=hidden;SHOWN_TABS=shown;applyTabVisibility();st.ok();})
+    .then(r=>{if(!r.ok)throw 0;HIDDEN_TABS=hidden;SHOWN_TABS=shown;tabVisRemember(hidden,shown);applyTabVisibility();st.ok();})
     .catch(()=>st.fail());
 }
 document.querySelectorAll("th[data-vk]").forEach(th=>th.onclick=()=>{const k=th.dataset.vk;verSortDir=(verSortK===k)?-verSortDir:-1;verSortK=k;paintVersion();_sortArrows("data-vk",verSortK,verSortDir);});
@@ -5626,8 +5640,13 @@ fetch("/api/me",{headers:{"X-Auth":AUTH}}).then(r=>r.json()).then(m=>{
   ROLE=m.subscription||"guest"; IS_ADMIN=!!m.is_admin; IS_SUPPORT=!!m.is_support;
   if(m.name)$("logout").textContent=`${m.name}${m.is_admin?" (admin)":m.is_support?" (support)":""} · Log out`;   // who's logged in
   return AUTH?fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():{}).catch(()=>({})):{};
-}).then(cfg=>{HIDDEN_TABS=(cfg&&cfg.hidden_tabs)||[]; SHOWN_TABS=(cfg&&cfg.shown_tabs)||[]; if(cfg&&cfg.leverage)LEVERAGE=cfg.leverage; PINNED=new Set((cfg&&cfg.pinned_preorders)||[]); OVERRIDES=(cfg&&cfg.pinned_overrides)||{}; if(cfg&&cfg.features)FEATURES=cfg.features;})
-  .catch(()=>{}).finally(()=>{applyTabVisibility();
+}).then(cfg=>{if(cfg&&Array.isArray(cfg.hidden_tabs)){const tv=tabVisFrom(cfg);HIDDEN_TABS=tv.hidden;SHOWN_TABS=tv.shown;} if(cfg&&cfg.leverage)LEVERAGE=cfg.leverage; PINNED=new Set((cfg&&cfg.pinned_preorders)||[]); OVERRIDES=(cfg&&cfg.pinned_overrides)||{}; if(cfg&&cfg.features)FEATURES=cfg.features; _tabVisRead=!!(cfg&&Array.isArray(cfg.hidden_tabs));})
+  .catch(()=>{}).finally(()=>{
+    // Settings not read (/api/me or /api/config failed): this login's remembered choices, then one more read.
+    if(!_tabVisRead&&AUTH){const tv=tabVisFrom(null);if(tv){HIDDEN_TABS=tv.hidden;SHOWN_TABS=tv.shown;}
+      setTimeout(()=>fetch("/api/config",{headers:{"X-Auth":AUTH}}).then(r=>r.ok?r.json():null).then(cfg=>{const tv=cfg&&Array.isArray(cfg.hidden_tabs)?tabVisFrom(cfg):null;
+        if(tv){HIDDEN_TABS=tv.hidden;SHOWN_TABS=tv.shown;applyTabVisibility();}}).catch(()=>{}),5000);}
+    applyTabVisibility();
     // Return to the tab we were on before a reload (e.g. after a data refresh); fresh visits open Introduction.
     let _t=null; try{_t=sessionStorage.getItem("sq_tab");}catch(e){}
     showTab(_t&&tabAllowed(_t)?_t:"welcome");});
