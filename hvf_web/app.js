@@ -272,6 +272,15 @@ function paintFreshness(){
   });
 }
 
+// Universe size in the page copy (owner 2026-10-30: the site still said "over 1,700" at 1,999). Every count in
+// the copy sits in a .univ-n span and is rewritten from the loaded records, rounded DOWN to the hundred below so
+// "over" stays true (1,999 -> "over 1,900"; 1,900 -> "over 1,800"). The HTML text is only the pre-load fallback;
+// test_js_behaviour forbids a count in the copy outside a .univ-n span.
+function _paintUniverseCount(){
+  const n=(DATA||[]).length; if(!n)return;
+  const r=(Math.floor((n-1)/100)*100).toLocaleString("en-GB");
+  document.querySelectorAll(".univ-n").forEach(e=>{e.textContent=e.dataset.plus?`${r}+`:`over ${r}`;});
+}
 function augment(r){
   r.dist_entry=(r.entry!=null&&r.current_price)? +(((r.entry-r.current_price)/r.current_price)*100).toFixed(2):null;
   // Return since it triggered, vs the entry (trigger) level. DIRECTION-AWARE so it agrees with the
@@ -1029,7 +1038,7 @@ $("refresh").onclick=async()=>{ if($("refresh").disabled)return;
   const scope = picked.length
     ? (locs.length ? `${locs.join(', ')} — ${picked.length} market${picked.length>1?'s':''} (${picked.join(', ')})`
                    : `the selected market${picked.length>1?'s':''} (${picked.join(', ')})`)
-    : `the full universe (${DATA.length||'884+'} instruments)`;
+    : `the full universe${DATA.length?` (${DATA.length.toLocaleString("en-GB")} instruments)`:""}`;
   if(!await appConfirm(`Rescans ${scope} — takes a few minutes. The page keeps working with the current data and reloads automatically when the rebuild finishes.`,{title:"Rebuild the snapshot now?",ok:"↻ Rebuild"}))return;
   $("refresh").disabled=true; $("refresh").textContent="↻ Starting…"; _refStart=Date.now(); _lastTens=-1;
   fetch("/api/refresh",{method:"POST",headers:{"X-Auth":AUTH,"Content-Type":"application/json"},
@@ -2282,7 +2291,7 @@ function refreshMarkets(ev){
   if(btn){btn.disabled=true;btn.textContent="⏳ Data loading…";}
   $("mk-count").innerHTML='<span class="sqh-loading">⏳ Data loading…</span>';
   fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(!r.ok)throw 0;return r.json();})
-    .then(j=>{DATA=j.records||[];DATA_LOADED=true;REPORT_UNAVAILABLE=!!j.report_unavailable;if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;DATA.forEach(augment);renderMarkets();})
+    .then(j=>{DATA=j.records||[];DATA_LOADED=true;REPORT_UNAVAILABLE=!!j.report_unavailable;if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;DATA.forEach(augment);_paintUniverseCount();renderMarkets();})
     .catch(()=>{$("mk-rows").innerHTML=`<tr><td colspan="8" class="empty">Could not refresh — try again.</td></tr>`;})
     .finally(()=>{if(btn){btn.disabled=false;btn.textContent=was;}});
 }
@@ -5670,7 +5679,7 @@ Promise.all([fetch("/api/records",{headers:{"X-Auth":AUTH}}).then(r=>{if(r.statu
     // the SAME /api/config response already being fetched for filters/trade/markets, so the very first
     // Scanner render is correctly filtered without needing a visit to Configuration first.
     if(cfg&&cfg.limits){MY_LIMITS=cfg.limits;Object.entries(cfg.limits).forEach(([k,v])=>{const el=$("lim-"+k);if(el){if(el.type==='checkbox')el.checked=!!v;else el.value=Array.isArray(v)?v.join(", "):v;}});}
-    DATA=j.records||[]; DATA_LOADED=true; REPORT_UNAVAILABLE=!!j.report_unavailable; DATA.forEach(augment);
+    DATA=j.records||[]; DATA_LOADED=true; REPORT_UNAVAILABLE=!!j.report_unavailable; DATA.forEach(augment); _paintUniverseCount();
     if(j.markets&&j.markets.length)REFRESH_MKT_LIST=j.markets;   // canonical market list for the Refresh picker (P-15)
     $("gen").textContent=j.generated_utc?("snapshot "+new Date(j.generated_utc).toLocaleString()):"no snapshot — run build_snapshot.py";
     paintFreshness();

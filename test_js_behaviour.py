@@ -4469,3 +4469,47 @@ def test_instruments_stops_asking_after_two_minutes_of_warming():
     """)
     out = run_js_async(pre, _extract("_instrSetHistory") + _extract("renderInstruments"), "drive()")
     assert out == {"asks": 40, "funnel": []}
+
+
+# ------------------------------------------------------------------------------------------------------
+# Universe size in the page copy (owner 2026-10-30: "We still see "1700" as a reference for the number of
+# instruments"). /api/status counted 1,999 that day while five places said "over 1,700" / "Scan 1,700+".
+# The ah-web-formatting rule to update the copy was a manual step nothing enforced; these tests enforce it.
+# ------------------------------------------------------------------------------------------------------
+_COUNT_IN_COPY = re.compile(r"\b\d{1,2},\d{3}\+?(?:\s|&nbsp;|</?b>)*instruments|Scan\s+\d", re.I)
+
+
+def test_no_instrument_count_is_hard_coded_in_the_page_copy():
+    html = re.sub(r"<!--.*?-->", "", client_html(), flags=re.S)
+    dynamic = re.findall(r'<span class="univ-n"[^>]*>[^<]*</span>', html)
+    stale = _COUNT_IN_COPY.findall(re.sub(r'<span class="univ-n"[^>]*>[^<]*</span>', "N", html))
+
+    assert not stale, f"a hard-coded universe size in the copy: {stale} -- wrap it in <span class=\"univ-n\">"
+    assert len(dynamic) == 5, "the five statements of the universe size (welcome, what-we-do x2, intro, step strip)"
+
+
+@pytest.mark.parametrize("n, over, plus", [(1999, "over 1,900", "1,900+"), (1900, "over 1,800", "1,800+"),
+                                           (2001, "over 2,000", "2,000+")])
+def test_universe_count_is_rounded_down_so_over_stays_true(n, over, plus):
+    pre = textwrap.dedent(f"""
+        let DATA=Array.from({{length:{n}}},()=>({{}}));
+        const els=[{{dataset:{{}},textContent:"over 1,700"}},{{dataset:{{plus:"1"}},textContent:"1,700+"}}];
+        const document={{querySelectorAll:()=>els}};
+    """)
+    out = run_js(pre, _extract("_paintUniverseCount"), "(_paintUniverseCount(), els.map(e=>e.textContent))")
+    assert out == [over, plus]
+
+
+def test_universe_count_leaves_the_fallback_when_nothing_loaded():
+    pre = ('let DATA=[]; const els=[{dataset:{},textContent:"over 1,900"}];'
+           "const document={querySelectorAll:()=>els};")
+    assert run_js(pre, _extract("_paintUniverseCount"), "(_paintUniverseCount(), els[0].textContent)") == "over 1,900"
+
+
+def test_every_records_load_repaints_the_universe_count():
+    js = client_js()
+    loads = [m.start() for m in re.finditer(r"DATA=j\.records\|\|\[\];", js)]
+    assert len(loads) == 2
+    for at in loads:
+        line = js[at: js.index("\n", at)]
+        assert "_paintUniverseCount()" in line, line[:120]

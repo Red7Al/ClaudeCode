@@ -1,6 +1,6 @@
 # EndToEndTrading — start here
 
-A squeeze (HVF) continuation scanner and trading system. It scans 1,773 instruments, publishes a snapshot,
+A squeeze (HVF) continuation scanner and trading system. It scans every instrument in its universe (1,999 by `/api/status`, 2026-10-30), publishes a snapshot,
 serves a Flask web app at <https://www.squeezescanner.cloud>, and places orders on IG.
 
 ## Read in this order

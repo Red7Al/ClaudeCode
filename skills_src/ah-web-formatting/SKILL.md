@@ -258,12 +258,12 @@ noted as of 2026-07-24.
   (see [[deploy-cron-tasks]]); new universe additions (e.g. the 2026-07-24 bond ETFs) get a scoped backfill
   on deploy.
 
-**Universe-size copy.** Any change to the instrument universe, deduplication or eligibility rules must
-trigger a search of public website copy for the previous count (including `1,300`, `1,400`, `1,700`, and `Scan …+`).
-Update every user-facing statement using the latest audited `/api/status` count, expressed as a rounded
-claim such as “over 1,700 instruments” unless an exact live count is rendered dynamically. Do not leave
-marketing or explainer tabs describing a superseded universe size; verify the deployed page contains the
-new wording.
+**Universe-size copy.** The page never hard-codes how many instruments it scans (owner 2026-10-30: the site
+said "over 1,700" while `/api/status` counted 1,999 -- this rule had been a manual search that nothing
+enforced). Every count in the copy is a `<span class="univ-n">` (`data-plus="1"` for the "1,900+" form);
+`_paintUniverseCount()` rewrites it from the loaded records, rounded DOWN to the hundred below so "over"
+stays true. The HTML text is only the pre-load fallback. `test_js_behaviour.py` fails on any
+`N,NNN instruments` or `Scan N` in the copy outside such a span.
 
 When a standard is only partially met, don't silently leave it — log a specific P-03 follow-up in the
 ChangeRequests file (marker LAST on the line — see [[cr-status-live]]).
