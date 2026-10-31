@@ -2902,8 +2902,13 @@ def place_working_order(
     # (or the levels belong to a different instrument): nothing valid to watch.
     stop_dist_pct = abs(entry_level - stop_level) / current * 100.0 if current else 0.0
     max_watch_pct = max(proximity_pct, stop_dist_pct * 1.2)
-    if dist_pct > max_watch_pct:
-        msg = (f"Price is {dist_pct:.1f}% from entry {entry_level} but the pattern's own "
+    # Price already through the pattern's own stop is the same invalidation, with no tolerance (2026-10-31
+    # review: 0016.HK SELL, stop 117.2, price 117.6 = 1.07x the stop distance, passed the 1.2x band above).
+    through_stop = (direction == "BUY" and current <= stop_level) or (direction == "SELL" and current >= stop_level)
+    if through_stop or dist_pct > max_watch_pct:
+        msg = (f"Price {current} is already through the pattern's stop {stop_level} — the setup is invalidated. "
+               f"NOT placed." if through_stop else
+               f"Price is {dist_pct:.1f}% from entry {entry_level} but the pattern's own "
                f"stop is only {stop_dist_pct:.1f}% away — the setup is already invalidated "
                f"(price outside the funnel) or the levels belong to a different instrument. "
                f"NOT queued as WATCHING.")

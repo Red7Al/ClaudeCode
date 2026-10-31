@@ -83,9 +83,9 @@ def _candidates(login: str = None) -> list:
     except Exception as e:
         log.warning(f"bridge: Scanner Report triggers unavailable ({e})")
     if report is None:
-        log.warning("bridge: the Scanner Report's trigger history cannot be read -- no triggered setup is "
-                    "ordered this pass (the report hides them all)")
-        report = {}
+        # Fails closed and LOUD, as the duplicate guard does (2026-10-31 review): a green run that silently
+        # ordered no trigger is how 40 of 66 went unordered. main() exits 1, so Cron Watch emails.
+        raise IdentityUnresolved("the Scanner Report's trigger history cannot be read -- no pass without it")
     out = []
     for r in records:
         tk = r.get("ticker")
@@ -103,13 +103,20 @@ def _candidates(login: str = None) -> list:
         if abs(e / p - 1) * 100 > 1.5:
             continue
         out.append(r)
-    _entry = lambda r: (r.get("_sig") or {}).get("hvf_h3_level") or r.get("entry") or 0
-    out.sort(key=lambda r: abs(_entry(r) / (r.get("current_price") or 1) - 1))
+    out.sort(key=_candidate_order)
     return out
 
 
+def _candidate_order(r: dict):
+    """Nearest entry first; a record with no scan price goes last, not first (2026-10-31 review: it was
+    sorted as entry/1, which decided which triggers waited for a later pass under BRIDGE_MAX_PER_RUN)."""
+    e, p = (r.get("_sig") or {}).get("hvf_h3_level") or r.get("entry") or 0, r.get("current_price")
+    return (not p, abs(e / p - 1) if p else 0.0)
+
+
 class IdentityUnresolved(RuntimeError):
-    """The acting account's identity set is empty, so the duplicate guard cannot be trusted.
+    """A guard the pass depends on cannot be read -- the acting account's identity set is empty, or (since
+    2026-10-31) the Scanner Report's trigger history -- so the pass must not place anything.
 
     Raised rather than returned, because every historical bug in this area came from an empty result being
     read as "nothing to avoid". A caller that must place orders has to handle this explicitly.
@@ -225,7 +232,11 @@ def run_bridge() -> dict:
     from run_session import get_user_profile
     import trading_limits
     profile = get_user_profile()
-    cands = _candidates(trading_limits.login_for_profile(profile))
+    try:
+        cands = _candidates(trading_limits.login_for_profile(profile))
+    except IdentityUnresolved as exc:
+        log.error(f"bridge: ABORTED before placing any order - {exc}")
+        return {"candidates": 0, "attempted": 0, "placed": 0, "let_winners_run": None, "aborted": str(exc)}
     summary = {"candidates": len(cands), "attempted": 0, "placed": 0, "let_winners_run": None}
     if not cands:
         log.info("bridge: no report triggers and no READY setups within 1.5% - nothing to do.")

@@ -71,8 +71,22 @@ def test_a_triggered_scan_record_the_report_hides_is_never_ordered(monkeypatch):
 def test_nothing_triggered_is_ordered_when_the_trigger_history_cannot_be_read(monkeypatch):
     near = dict(MET_SCAN, current_price=98.6)
     placed = _wire(monkeypatch, [near], None)
-    order_bridge.run_bridge()
+    assert order_bridge.main() == 1, "an unreadable report must turn the run red, so Cron Watch emails"
     assert placed == []
+
+
+def test_a_report_calculation_that_raises_aborts_the_pass(monkeypatch):
+    """2026-10-31 review: any exception from the report was logged as a warning and the pass went on green."""
+    placed = _wire(monkeypatch, [dict(MET_SCAN, current_price=98.6)], {"MET": [MET_SETUP]})
+    monkeypatch.setattr(server, "report_order_sigs", lambda login, snap: 1 / 0)
+    assert order_bridge.run_bridge().get("aborted")
+    assert placed == []
+
+
+def test_a_record_with_no_scan_price_sorts_last():
+    assert [r["ticker"] for r in sorted(
+        [{"ticker": "NOPX", "entry": 10.0, "current_price": None}, {"ticker": "FAR", "entry": 10.0, "current_price": 12.0}],
+        key=order_bridge._candidate_order)] == ["FAR", "NOPX"]
 
 
 def test_a_finished_trigger_is_not_ordered(monkeypatch):
