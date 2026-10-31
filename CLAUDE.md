@@ -71,6 +71,14 @@ Each rule exists because skipping it produced a real defect in September 2026.
    Preserve original information in a compatible field unless removal is approved.
 7. **Operational work is complete only at the live consumer** — build, publish, install, verify the
    generated timestamp. A green intermediate step or a fallback artifact is not completion.
+8. **Owner 2026-10-31: no duplicated code, no over-complication.** Extend the existing function; never
+   write a second one that decides the same thing.
+9. **Owner 2026-10-31: test thoroughly before every deploy** ("bug fixing is easily avoided with thorough
+   testing") -- the clean-worktree CI suite plus the change's effect on real data, then deploy.
+10. **Owner 2026-10-31: frequent code and security reviews** -- review the diff (correctness and security:
+   secrets, auth on every route, data exposure, injection) before each commit that touches code.
+11. **Owner 2026-10-31: fewer .md files only where that helps, losing no content** -- measured that day:
+   36 tracked, all referenced, one duplicated paragraph (removed). Do not merge files for the sake of a count.
 
 ## The two defects this repository keeps producing
 
