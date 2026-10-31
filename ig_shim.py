@@ -2904,7 +2904,10 @@ def place_working_order(
     max_watch_pct = max(proximity_pct, stop_dist_pct * 1.2)
     # Price already through the pattern's own stop is the same invalidation, with no tolerance (2026-10-31
     # review: 0016.HK SELL, stop 117.2, price 117.6 = 1.07x the stop distance, passed the 1.2x band above).
-    through_stop = (direction == "BUY" and current <= stop_level) or (direction == "SELL" and current >= stop_level)
+    # A long's stop is hit on the BID and a short's on the OFFER (2026-10-31 test review: a BUY with bid 97.40
+    # under its 97.46 stop, offer 97.50 above it, was placed).
+    through_stop = ((direction == "BUY" and (bid or current) <= stop_level)
+                    or (direction == "SELL" and (offer or current) >= stop_level))
     if through_stop or dist_pct > max_watch_pct:
         msg = (f"Price {current} is already through the pattern's stop {stop_level} — the setup is invalidated. "
                f"NOT placed." if through_stop else

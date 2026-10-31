@@ -34,17 +34,25 @@ log = logging.getLogger("order_bridge")
 
 BRIDGE_INTERVAL_H = 2          # user 2026-06-30: "every couple of hours as live prices move"
 BRIDGE_MAX_PER_RUN = 6         # safety: at most this many NEW IG placements per pass
+# Owner 2026-10-31, choosing from a replay of every report trigger of the last 90 days on the verified price
+# file: a report trigger is ordered only on its trigger day or the next trading day. Ordered at its original
+# entry, the 89 triggers passing his limits averaged +1.29R on the trigger day, +0.14R one day late, and
+# -0.23R to -0.51R at every delay of 2 to 10 days. Older triggers stay on the report, unordered. An ORDERING
+# policy, so it lives here, not in the report's shared calculation (2026-10-31 code review).
+BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS = 1
 _SNAPSHOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "snapshot.json")
 
 
 def _candidates(login: str = None) -> list:
     """Snapshot records to hand to the order engine, each carrying `_sig` when it is a report trigger.
 
-    TRIGGERED: EXACTLY the open triggers on the owner's Scanner Report, from the report's own calculation
+    TRIGGERED: the open triggers on the owner's Scanner Report, from the report's own calculation
     (server.report_order_sigs -> _report_pick; owner 2026-10-31: "never was more than one calculation
-    needed"). Their levels and trigger-date measures go to the engine unchanged, with NO 1.5% pre-filter:
-    each goes to IG at its own entry, as "Create an order" places it (a limit at entry once price is past it),
-    so every report trigger leaves a working_orders row or a logged reason. A TRIGGERED scan record the report hides
+    needed"), no more than BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS old. Their levels and trigger-date measures go
+    to the engine unchanged, with NO 1.5% pre-filter: each goes to IG at its own entry, as "Create an order"
+    places it (a limit at entry once price is past it), so every report trigger inside the age rule leaves a
+    working_orders row or a logged reason; an older one is listed in one warning line and never ordered by
+    any path -- its ticker does not fall through to the READY setup (2026-10-31 code review). A TRIGGERED scan record the report hides
     is never ordered. Until 2026-10-31 this function judged the snapshot's current funnel on latest-bar
     values inside 1.5% of the twice-daily scan price, silently, and 40 of 66 report triggers got no order.
 
@@ -66,11 +74,11 @@ def _candidates(login: str = None) -> list:
                 _snap = json.load(fh)
             records, snap_gen = _snap.get("records", []), _snap.get("generated_utc")
         except Exception as e2:
-            log.warning(f"bridge: snapshot unreadable: {e2}")
-            return []
+            # Red, not green (2026-10-31 test review: an unreadable snapshot exited 0 having placed nothing).
+            raise IdentityUnresolved(f"the Scanner snapshot is unreadable ({e2}) -- no pass without it")
     if not records:
-        log.warning("bridge: snapshot contains no records - refusing to treat that as 'nothing to do'.")
-        return []
+        raise IdentityUnresolved("the Scanner snapshot contains no records -- refusing to treat that as "
+                                 "'nothing to do'")
     try:
         from config_store import cfg_num
         _minq = float(cfg_num("bridge_min_quality", 50))
@@ -86,11 +94,22 @@ def _candidates(login: str = None) -> list:
         # Fails closed and LOUD, as the duplicate guard does (2026-10-31 review): a green run that silently
         # ordered no trigger is how 40 of 66 went unordered. main() exits 1, so Cron Watch emails.
         raise IdentityUnresolved("the Scanner Report's trigger history cannot be read -- no pass without it")
-    out = []
+    from hvf_web.server import _trading_days_since
+    out, aged = [], []
     for r in records:
         tk = r.get("ticker")
         if tk in report:
             sig = report[tk]
+            try:
+                age = _trading_days_since(sig["trig_date"])
+            except (TypeError, ValueError):
+                # One bad row skips its own trigger, never the pass (2026-10-31 code review).
+                log.warning(f"bridge: report trigger {tk} has an unreadable trigger date {sig.get('trig_date')!r} "
+                            f"-- not ordered")
+                continue
+            if age > BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS:
+                aged.append(f"{tk} {sig['trig_date']} ({age}d)")
+                continue
             log.info(f"bridge: report trigger {tk} {sig['direction']} triggered {sig['trig_date']} "
                      f"entry {sig['hvf_h3_level']} -> order engine")
             out.append(dict(r, _sig=sig))
@@ -103,15 +122,19 @@ def _candidates(login: str = None) -> list:
         if abs(e / p - 1) * 100 > 1.5:
             continue
         out.append(r)
+    if aged:
+        log.warning(f"bridge: {len(aged)} report trigger(s) older than {BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS} trading "
+                    f"day(s) not ordered (owner 2026-10-31): {', '.join(aged)}")
     out.sort(key=_candidate_order)
     return out
 
 
 def _candidate_order(r: dict):
-    """Nearest entry first; a record with no scan price goes last, not first (2026-10-31 review: it was
-    sorted as entry/1, which decided which triggers waited for a later pass under BRIDGE_MAX_PER_RUN)."""
+    """Report triggers before READY setups -- a trigger has at most one more trading day to be ordered, so a
+    READY setup must never take its place under BRIDGE_MAX_PER_RUN (2026-10-31 test review) -- then nearest
+    entry first; a record with no scan price goes last within its group, not first (it was sorted as entry/1)."""
     e, p = (r.get("_sig") or {}).get("hvf_h3_level") or r.get("entry") or 0, r.get("current_price")
-    return (not p, abs(e / p - 1) if p else 0.0)
+    return (not r.get("_sig"), not p, abs(e / p - 1) if p else 0.0)
 
 
 class IdentityUnresolved(RuntimeError):
@@ -223,8 +246,8 @@ def _ordered_triggers(sigs: list, owner: str = None) -> set:
         for tk, direction, placed, filled in rows or []:
             if tk == s["ticker"] and direction == s["direction"] and (
                     str(placed)[:10] >= s["trig_date"] or (filled is not None and str(filled)[:10] >= s["trig_date"])):
-                log.info(f"bridge: report trigger {tk} {s['trig_date']} already ordered ({str(placed)[:16]}) "
-                         f"-- a trigger is ordered once")
+                log.info(f"bridge: report trigger {tk} {s['trig_date']} already ordered (placed {str(placed)[:16]}, "
+                         f"filled {str(filled)[:16] if filled is not None else '-'}) -- a trigger is ordered once")
                 done.add(tk)
                 break
     return done
