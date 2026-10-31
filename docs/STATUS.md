@@ -260,6 +260,13 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
    8 Oct trigger as TARGET. Since `77a3112` the store checks wicks against Yahoo's hourly bars. When IG
    verification resumes is unknown.
 
+8. **REPORT TRIGGERS WITH NO ORDER (P-01, owner: "major fck up"; "this is reckless").** MEASURED 2026-10-30: 40
+   of 66 report triggers have no `working_orders` row. Cause: `order_bridge._candidates` keeps its own trigger
+   definition (current snapshot record, READY/TRIGGERED, quality > 30, within 1.5% of entry, dropped without a
+   log line); the report judges trigger-date values (`2b3a05b`, 10-09). 11 blocked on latest-bar values, 16
+   never shortlisted, 10 before the logs, 3 scan-only. Fix: bridge takes the report's trigger set -- awaiting
+   the owner's yes to deploy (production trading change).
+
 Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub emails every failed run.
 
 ## 4. Owner rules settled this session — do not reopen
@@ -269,6 +276,8 @@ Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub em
 - **My Pre-orders is not part of the delivery**; he acts only from the trigger date.
 - **AUS/UK/US Open stay disabled.** Alerts are email; Slack is not used.
 - No unverified figure is ever shown — not even with "disregard".
+- **One trigger calculation for the report and the bridge** (owner 2026-10-31: "never was more than one
+  calculation needed"). Rule in `CLAUDE.md`.
 
 ## 5. Waiting on an owner decision (detail in `docs/archive/`)
 

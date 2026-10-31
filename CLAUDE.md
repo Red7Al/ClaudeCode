@@ -141,6 +141,11 @@ workflow file changes, put today's date in its `name:`.
 ## Constraints
 
 - **`WEB_BRIDGE` is the only enabled execution source.** Bridge changes are production trading changes.
+- **ONE trigger calculation, used by everything -- owner 2026-10-31: "never was more than one calculation needed".**
+  The Scanner Report's trigger set (`server._open_trigger_setups` / `_report_setup`, judged on trigger-date values) is
+  the only definition of "a trigger to act on". The Order Bridge, emails and every other consumer call it; none
+  re-derives triggers or limits from the snapshot or the latest bar. Measured 2026-10-30: the bridge kept its own
+  definition and 40 of 66 report triggers got no order.
 - **AUS Open, UK Open and US Open stay DISABLED on cron-job.org — owner decision, settled 2026-10-08.**
   Last runs 2026-08-06. Do not re-enable them, do not "fix" anything that reports them missing, and do not
   raise them again. Session Watchdog skips any session whose cron-job.org job is disabled.
