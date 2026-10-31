@@ -1,4 +1,4 @@
-name: Order Bridge (snapshot -> IG working orders, 2026-10-27)
+name: Order Bridge (snapshot -> IG working orders, 2026-10-31)
 
 # Database -> IG working-order bridge (hvf_web/order_bridge.py) for the FULL scanned universe.
 #
@@ -61,6 +61,10 @@ jobs:
           IONOS_USER:    ${{ secrets.IONOS_USER }}
           IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
           IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+          # The site's own pair -- the Morning Chain's when it is newer than the evening's (2026-10-31): a
+          # trigger dated D reaches the trigger history only at the next morning's refresh, so on the evening
+          # pair it was visible to just the 20:00 and 22:00 passes of the next trading day.
+          IONOS_SRC_DIR: ${{ secrets.IONOS_DIR }}/hvf_web
         run: |
           set -euo pipefail
           bash .github/scripts/fetch_ionos_evening.sh snapshot.json hvf_web || {
@@ -94,6 +98,7 @@ jobs:
           IONOS_USER:    ${{ secrets.IONOS_USER }}
           IONOS_PORT:    ${{ secrets.IONOS_PORT || '22' }}
           IONOS_SSH_KEY: ${{ secrets.IONOS_SSH_KEY }}
+          IONOS_SRC_DIR: ${{ secrets.IONOS_DIR }}/hvf_web
         run: |
           set -uo pipefail
           bash .github/scripts/fetch_ionos_evening.sh report_summary.json hvf_web || {

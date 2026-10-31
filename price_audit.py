@@ -31,7 +31,7 @@ import argparse
 import logging
 import os
 import time
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 
 import pandas as pd
 
@@ -157,6 +157,19 @@ def _today():
     return datetime.now(timezone.utc).date()
 
 
+def _newest_closed_bar(df):
+    """The newest bar date that HAS a close -- the bars price_store._df_to_rows actually writes. A row Yahoo returns
+    with no close is never stored, so it must not count as delivered (2026-10-31: the 10-30 bar of every European
+    and crypto instrument was absent from price_history while this audit reported 11 of 1,990 missing)."""
+    if df is None or df.empty:
+        return None
+    close = df["Close"]
+    if getattr(close, "ndim", 1) > 1:              # a MultiIndex frame not yet flattened
+        close = close.iloc[:, 0]
+    closed = close.dropna()
+    return max(pd.Timestamp(i).date() for i in closed.index) if len(closed) else None
+
+
 def _prev_weekday(d):
     d -= timedelta(days=1)
     while d.weekday() >= 5:
@@ -202,7 +215,7 @@ def _retry_prev_bar(missing, expected, today, source, db, max_seconds=RETRY_MAX_
         if h.empty:
             continue
         price_store.upsert_bars(tk, h, source, db=db, yahoo_symbol=ysym)
-        if max(pd.Timestamp(i).date() for i in h.index) >= expected[tk]:
+        if (_newest_closed_bar(h) or date.min) >= expected[tk]:
             recovered.append(tk)
     return recovered, untried
 
@@ -230,7 +243,7 @@ def audit_ticker(ticker, yahoo_symbol, window_days, source, db, last_bar=None):
         # The expected bar follows THIS fetch's own end date. MEASURED 2026-10-13: the evening run starts
         # ~23:00 UTC and crosses midnight; judged against the date at the end of the run, 1,702 of 1,750
         # read as "missing" a bar that download(end=<fetch day>) excludes by design.
-        last_bar[ticker] = (max(pd.Timestamp(i).date() for i in dl.index), _prev_weekday(end))
+        last_bar[ticker] = (_newest_closed_bar(dl) or date.min, _prev_weekday(end))
 
     # Compare against what is stored for the same window BEFORE overwriting.
     discrepancies, max_drift = 0, 0.0

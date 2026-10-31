@@ -5,13 +5,15 @@
 # evening snapshot and its summary there, outside the web root (owner 2026-10-21: the repository is PUBLIC
 # and is for code, not reports -- no GitHub artifact). Only a .json name is accepted, it lands under a
 # temporary name and must parse before it replaces DEST_DIR/FILE. Exits 3 when the host has no such file.
-# Needs IONOS_HOST, IONOS_USER, IONOS_SSH_KEY; IONOS_PORT defaults to 22.
+# Needs IONOS_HOST, IONOS_USER, IONOS_SSH_KEY; IONOS_PORT defaults to 22. IONOS_SRC_DIR overrides the source
+# directory (default /home/www/data/evening); the Order Bridge reads the site's own pair, the newest of morning
+# and evening (2026-10-31).
 set -euo pipefail
 file="$1"; dest="$2"
 [[ "$file" =~ ^[a-z_]+\.json$ ]] || { echo "refusing file name '$file'" >&2; exit 2; }
 key="${RUNNER_TEMP:-/tmp}/ionos_evening_key"
 printf '%s\n' "$IONOS_SSH_KEY" > "$key"; chmod 600 "$key"
-src="/home/www/data/evening/$file"
+src="${IONOS_SRC_DIR:-/home/www/data/evening}/$file"
 if ! ssh -i "$key" -p "${IONOS_PORT:-22}" -o BatchMode=yes -o StrictHostKeyChecking=accept-new \
        "${IONOS_USER}@${IONOS_HOST}" "test -f $src && cat $src" > "$dest/$file.new"; then
   rm -f "$dest/$file.new" "$key"; echo "no $src on IONOS" >&2; exit 3

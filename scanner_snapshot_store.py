@@ -241,7 +241,10 @@ def ensure_private_bucket() -> str:
     response = _request(
         "POST", f"{base}/bucket", headers=_headers("publish", "application/json"),
         json={"id": bucket, "name": bucket, "public": False,
-              "file_size_limit": 6 * 1024 * 1024, "allowed_mime_types": ["application/json"]}, timeout=20,
+              "file_size_limit": 6 * 1024 * 1024,
+              # gzip since 84cbcd2 (2026-08-17); a bucket that allowed only JSON refused every upload with 400
+              # once the egress block lifted (2026-10-31). JSON stays allowed for the objects already stored.
+              "allowed_mime_types": ["application/json", "application/gzip"]}, timeout=20,
     )
     if response.status_code not in (200, 201):
         raise SnapshotStoreError(f"could not create private Storage bucket ({response.status_code})")
@@ -492,7 +495,9 @@ def publish_snapshot(snapshot: dict, source: str = "manual") -> dict:
         # Immutable names make retrying the exact same publication safe.
         detail = (response.text or "").lower()
         if response.status_code not in (400, 409) or "exist" not in detail:
-            raise SnapshotStoreError(f"snapshot upload failed ({response.status_code})")
+            # Storage's own reason, so a refusal is never unexplained again (2026-10-31: a 400 went undiagnosed
+            # for a day). The body is Storage's JSON error message; it carries no key.
+            raise SnapshotStoreError(f"snapshot upload failed ({response.status_code}): {(response.text or '')[:300]}")
     meta = {
         "generated_utc": generated,
         "object_path": object_path,

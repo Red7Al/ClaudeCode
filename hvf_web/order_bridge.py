@@ -94,22 +94,35 @@ def _candidates(login: str = None) -> list:
         # Fails closed and LOUD, as the duplicate guard does (2026-10-31 review): a green run that silently
         # ordered no trigger is how 40 of 66 went unordered. main() exits 1, so Cron Watch emails.
         raise IdentityUnresolved("the Scanner Report's trigger history cannot be read -- no pass without it")
-    from hvf_web.server import _trading_days_since
-    out, aged = [], []
+    from hvf_web.server import _trading_days_since, _summary_section
+    # Each instrument's newest bar with a close, from the summary built with this snapshot (2026-10-31): a
+    # trigger is orderable while its instrument has no bar after the trigger bar -- the exchange's own sessions,
+    # holidays and time zone. Without the section, weekdays after the trigger date (UTC) decide, as before.
+    last_bar = _summary_section("last_bar", {"generated_utc": snap_gen}) or {}
+    out, aged, by_weekday = [], [], []
     for r in records:
         tk = r.get("ticker")
         if tk in report:
             sig = report[tk]
-            try:
-                age = _trading_days_since(sig["trig_date"])
-            except (TypeError, ValueError):
+            trig, lb = sig.get("trig_date"), last_bar.get(tk)
+            if not (isinstance(trig, str) and len(trig) == 10):
                 # One bad row skips its own trigger, never the pass (2026-10-31 code review).
-                log.warning(f"bridge: report trigger {tk} has an unreadable trigger date {sig.get('trig_date')!r} "
-                            f"-- not ordered")
+                log.warning(f"bridge: report trigger {tk} has an unreadable trigger date {trig!r} -- not ordered")
                 continue
-            if age > BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS:
-                aged.append(f"{tk} {sig['trig_date']} ({age}d)")
-                continue
+            if lb is not None:
+                if lb > trig:          # the instrument has traded a session since its trigger bar
+                    aged.append(f"{tk} {trig} (bar {lb})")
+                    continue
+            else:
+                try:
+                    age = _trading_days_since(trig)
+                except (TypeError, ValueError):
+                    log.warning(f"bridge: report trigger {tk} has an unreadable trigger date {trig!r} -- not ordered")
+                    continue
+                by_weekday.append(tk)
+                if age > BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS:
+                    aged.append(f"{tk} {trig} ({age}d)")
+                    continue
             log.info(f"bridge: report trigger {tk} {sig['direction']} triggered {sig['trig_date']} "
                      f"entry {sig['hvf_h3_level']} -> order engine")
             out.append(dict(r, _sig=sig))
@@ -122,9 +135,12 @@ def _candidates(login: str = None) -> list:
         if abs(e / p - 1) * 100 > 1.5:
             continue
         out.append(r)
+    if by_weekday:
+        log.warning(f"bridge: {len(by_weekday)} report trigger(s) judged by weekdays, no last-bar date in the "
+                    f"summary: {', '.join(by_weekday)}")
     if aged:
-        log.warning(f"bridge: {len(aged)} report trigger(s) older than {BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS} trading "
-                    f"day(s) not ordered (owner 2026-10-31): {', '.join(aged)}")
+        log.warning(f"bridge: {len(aged)} report trigger(s) past their trigger day and next trading day, not "
+                    f"ordered (owner 2026-10-31): {', '.join(aged)}")
     out.sort(key=_candidate_order)
     return out
 

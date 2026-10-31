@@ -45,6 +45,7 @@ def build(snap: dict) -> dict:
         "vwap_atr": server._live_vwap_atr(snap),
     }
     sections["squeeze_history"] = squeeze_history_section()
+    sections["last_bar"] = last_bar_section(snap)
     if sections["open_setups"] is None:
         raise RuntimeError("open trigger setups could not be read -- refusing to publish a summary without them")
     try:
@@ -55,6 +56,35 @@ def build(snap: dict) -> dict:
     return {"generated_utc": snap.get("generated_utc"),
             "built_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "sections": sections}
+
+
+def last_bar_section(snap: dict):
+    """{ticker: 'YYYY-MM-DD'} -- each snapshot instrument's newest bar that has a close, from the verified price
+    bars file this job fetched (PRICE_BARS_DIR). The Order Bridge orders a report trigger only while its
+    instrument has no bar after the trigger bar (owner 2026-10-31: trigger day or next trading day), so the
+    exchange's own sessions decide -- its holidays and time zone included, no calendar here. None when the file
+    is absent or was built more than 24 h before the snapshot: the bridge then falls back to counting weekdays."""
+    d = os.environ.get("PRICE_BARS_DIR")
+    if not d or not os.path.isfile(os.path.join(d, "price_bars.meta.json")):
+        print("last_bar: no price bars file in this job -- section omitted")
+        return None
+    with open(os.path.join(d, "price_bars.meta.json"), encoding="utf-8") as fh:
+        built = datetime.fromisoformat(json.load(fh)["built_at"])
+    gen = snap.get("generated_utc")
+    if not gen or abs((datetime.fromisoformat(gen) - built).total_seconds()) > 24 * 3600:
+        print(f"last_bar: price bars file built {built.isoformat()} is not within 24 h of snapshot {gen} -- omitted")
+        return None
+    import price_bars
+    by, _opens, _n, _newest = price_bars._load(d)
+    want = {r.get("ticker") for r in snap.get("records", []) if r.get("ticker")}
+    out = {}
+    for tk, rows in by.items():
+        if tk in want:
+            closed = [r[0] for r in rows if r[3] is not None]
+            if closed:
+                out[tk] = max(closed).isoformat()
+    print(f"last_bar: {len(out):,} of {len(want):,} snapshot instruments, price bars file built {built.isoformat()}")
+    return out
 
 
 def squeeze_history_section():
