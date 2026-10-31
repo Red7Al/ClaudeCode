@@ -79,6 +79,10 @@ Each rule exists because skipping it produced a real defect in September 2026.
    secrets, auth on every route, data exposure, injection) before each commit that touches code.
 11. **Owner 2026-10-31: fewer .md files only where that helps, losing no content** -- measured that day:
    36 tracked, all referenced, one duplicated paragraph (removed). Do not merge files for the sake of a count.
+12. **Owner 2026-10-31: testing is done by a separate test specialist, never by the author** ("it is a
+   specialist skill in its own right"). Code, report design and tests come from different people: an
+   independent test-specialist agent reviews the tests, mutates the code, adds missing cases and runs the clean
+   suite. Nothing is pushed or deployed until it reports SHIP.
 
 ## The two defects this repository keeps producing
 

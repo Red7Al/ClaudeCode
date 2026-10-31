@@ -281,6 +281,9 @@ Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub em
 - **The bridge orders a report trigger only on its trigger day or the next trading day** (owner 2026-10-31, from a
   replay: +1.29R on the trigger day, negative from 2 days late). Rule in `CLAUDE.md`. Measured on the live 2026-10-30
   snapshot: 0 report triggers orderable on Monday 2026-11-02, against 28 under the rule shipped that morning.
+- **Testing is done by a separate test specialist, never by the author** (owner 2026-10-31). Rule in `CLAUDE.md`.
+  b076d75 and 46f6d87 (0-1 day rule) are held unpushed until the specialist reports; GitHub has 85bd7f7. They must
+  be pushed before Monday 2026-11-02 06:00 UTC, or that bridge run orders the 28 old triggers.
 
 ## 5. Waiting on an owner decision (detail in `docs/archive/`)
 
