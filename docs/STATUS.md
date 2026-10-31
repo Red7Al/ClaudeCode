@@ -282,8 +282,9 @@ Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub em
   replay: +1.29R on the trigger day, negative from 2 days late). Rule in `CLAUDE.md`. Measured on the live 2026-10-30
   snapshot: 0 report triggers orderable on Monday 2026-11-02, against 28 under the rule shipped that morning.
 - **Testing is done by a separate test specialist, never by the author** (owner 2026-10-31). Rule in `CLAUDE.md`.
-  b076d75 and 46f6d87 (0-1 day rule) are held unpushed until the specialist reports; GitHub has 85bd7f7. They must
-  be pushed before Monday 2026-11-02 06:00 UTC, or that bridge run orders the 28 old triggers.
+  First use 2026-10-31: two rounds (46f6d87, then b14e936), both SHIP; 49 QA tests, 20/20 mutations killed. Pushed
+  d4a97fb after a clean suite (1911 passed, exit 0) and deployed; the API worker still served 988413bad46b at deploy.
+  Proof at the live consumer is the first bridge run with it: Monday 2026-11-02 06:00 UTC.
 
 ## 5. Waiting on an owner decision (detail in `docs/archive/`)
 
