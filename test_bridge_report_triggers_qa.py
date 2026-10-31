@@ -26,6 +26,13 @@ from test_bridge_report_triggers import (LIMITS, MET_MCAP, MET_SCAN, MET_SETUP, 
 D = datetime.date
 
 
+@pytest.fixture(autouse=True)
+def _no_local_summary(monkeypatch):
+    """These cases are judged with no summary `last_bar` section (the weekday fallback, a2b2976). A developer's
+    local hvf_web/report_summary.json must not change them; the last-bar rule is in test_trigger_age_last_bar_qa."""
+    monkeypatch.setattr(server, "_SUMMARY_DISABLED", True)
+
+
 def _today(monkeypatch, iso):
     monkeypatch.setattr(server, "_utc_today", lambda: D.fromisoformat(iso))
 
@@ -87,7 +94,7 @@ def test_aged_triggers_are_listed_in_one_warning_line(monkeypatch, caplog):
     _today(monkeypatch, "2026-10-28")
     caplog.set_level("WARNING", logger="order_bridge")
     order_bridge.run_bridge()
-    lines = [r.getMessage() for r in caplog.records if r.levelname == "WARNING" and "older than" in r.getMessage()]
+    lines = [r.getMessage() for r in caplog.records if r.levelname == "WARNING" and "past their trigger day" in r.getMessage()]
     assert len(lines) == 1 and "MET 2026-10-23 (3d)" in lines[0] and "MET2 2026-10-23 (3d)" in lines[0]
 
 

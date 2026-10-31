@@ -71,11 +71,13 @@ def test_every_section_the_builder_writes_is_read_by_a_helper():
     silent database fallback for ever."""
     import inspect
     import publish_report_summary as pub
-    src = inspect.getsource(server)
+    from hvf_web import order_bridge
+    # Readers live in server and, since a2b2976 (`last_bar`), in the Order Bridge.
+    src = inspect.getsource(server) + inspect.getsource(order_bridge)
     built = set(__import__("re").findall(r'"(\w+)": server\._', inspect.getsource(pub.build)))
     read = set(__import__("re").findall(r'_summary_section\("(\w+)"', src))
     built |= set(__import__("re").findall(r'sections\["(\w+)"\] = ', inspect.getsource(pub.build)))
-    assert built == read and len(built) == 11, (built, read)
+    assert built == read and len(built) == 12, (built, read)
 
 
 def test_a_deploy_never_ships_a_local_summary_over_the_hosts():
@@ -208,7 +210,8 @@ def test_the_order_bridge_gets_the_evening_snapshot_and_summary_from_ionos():
     keep = next(s for s in rs["jobs"]["summary"]["steps"] if s.get("name") == "Keep the evening summary on IONOS")
     assert "dir=/home/www/data/evening" in keep["run"] and "$dir/report_summary.json" in keep["run"]
     sh = open(".github/scripts/fetch_ionos_evening.sh", encoding="utf-8").read()
-    assert 'src="/home/www/data/evening/$file"' in sh
+    # a2b2976: the source folder is overridable; the evening folder stays the default for its other readers.
+    assert 'src="${IONOS_SRC_DIR:-/home/www/data/evening}/$file"' in sh
 
 
 def test_the_thread_precompute_gets_the_evening_snapshot_from_ionos():
