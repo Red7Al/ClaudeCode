@@ -198,18 +198,20 @@ def _already_working(owner: str = None) -> set:
 
 def _ordered_triggers(sigs: list, owner: str = None) -> set:
     """Tickers whose report trigger this account has ALREADY ordered: a working_orders row for the same ticker
-    and direction placed on or after the trigger date, in ANY status. A trigger is ordered once. Without this,
+    and direction placed -- or filled -- on or after the trigger date, in ANY status. A trigger is ordered once. Without this,
     the bridge would re-place a trigger every pass for its 90 days on the report after its order was stopped
     out, expired or deleted -- _already_working sees only PENDING/WATCHING orders and open positions.
     placed_at is set on every row (516 of 516, default now(), measured 2026-10-31). Fails closed, as
-    _already_working does: an unreadable guard aborts the pass rather than risk a second order."""
+    _already_working does: an unreadable guard aborts the pass rather than risk a second order.
+    A pre-order placed before the trigger that FILLED on or after it is that trigger's order (2026-10-31 code
+    review): judged on placed_at alone, the trigger would be placed again once that trade had closed."""
     if not sigs:
         return set()
     try:
         from db_pool import get_db
         db = get_db()
         try:
-            rows = db.run("select ticker, direction, placed_at from working_orders "
+            rows = db.run("select ticker, direction, placed_at, filled_at from working_orders "
                           "where ticker = any(:tks) and user_id = any(:ids)",
                           tks=sorted({s["ticker"] for s in sigs}), ids=account_scope.row_identities(owner))
         finally:
@@ -218,8 +220,9 @@ def _ordered_triggers(sigs: list, owner: str = None) -> set:
         raise IdentityUnresolved(f"working_orders trigger lookup failed ({e}); refusing to place this pass")
     done = set()
     for s in sigs:
-        for tk, direction, placed in rows or []:
-            if tk == s["ticker"] and direction == s["direction"] and str(placed)[:10] >= s["trig_date"]:
+        for tk, direction, placed, filled in rows or []:
+            if tk == s["ticker"] and direction == s["direction"] and (
+                    str(placed)[:10] >= s["trig_date"] or (filled is not None and str(filled)[:10] >= s["trig_date"])):
                 log.info(f"bridge: report trigger {tk} {s['trig_date']} already ordered ({str(placed)[:16]}) "
                          f"-- a trigger is ordered once")
                 done.add(tk)

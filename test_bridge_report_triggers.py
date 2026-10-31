@@ -119,7 +119,7 @@ def test_a_trigger_already_ordered_is_never_ordered_again(monkeypatch):
     class _Db:
         def run(self, sql, **k):
             assert "from working_orders" in sql
-            return [["MET", "BUY", datetime.datetime(2026, 10, 24, 14, 0, tzinfo=datetime.timezone.utc)]]
+            return [["MET", "BUY", datetime.datetime(2026, 10, 24, 14, 0, tzinfo=datetime.timezone.utc), None]]
 
         def close(self):
             pass
@@ -137,8 +137,8 @@ def test_an_order_placed_before_the_trigger_does_not_count(monkeypatch):
 
     class _Db:
         def run(self, sql, **k):
-            return [["MET", "BUY", datetime.datetime(2026, 9, 2, 9, 0, tzinfo=datetime.timezone.utc)],
-                    ["MET", "SELL", datetime.datetime(2026, 10, 25, 9, 0, tzinfo=datetime.timezone.utc)]]
+            return [["MET", "BUY", datetime.datetime(2026, 9, 2, 9, 0, tzinfo=datetime.timezone.utc), None],
+                    ["MET", "SELL", datetime.datetime(2026, 10, 25, 9, 0, tzinfo=datetime.timezone.utc), None]]
 
         def close(self):
             pass
@@ -160,3 +160,23 @@ def test_an_unreadable_trigger_guard_aborts_the_pass(monkeypatch):
     monkeypatch.setattr(order_bridge, "_ordered_triggers", _REAL_ORDERED_TRIGGERS)
     summary = order_bridge.run_bridge()
     assert placed == [] and "aborted" in summary
+
+
+def test_a_preorder_that_filled_on_the_trigger_date_is_that_triggers_order(monkeypatch):
+    """Placed the day before MET triggered (2026-10-22), filled on the trigger date: ordered, never again."""
+    placed = _wire(monkeypatch, [MET_SCAN], {"MET": [MET_SETUP]})
+    import datetime
+
+    class _Db:
+        def run(self, sql, **k):
+            return [["MET", "BUY", datetime.datetime(2026, 10, 22, 15, 0, tzinfo=datetime.timezone.utc),
+                     datetime.datetime(2026, 10, 23, 14, 0, tzinfo=datetime.timezone.utc)]]
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("db_pool.get_db", lambda: _Db())
+    monkeypatch.setattr(order_bridge.account_scope, "row_identities", lambda owner=None: ["u1"])
+    monkeypatch.setattr(order_bridge, "_ordered_triggers", _REAL_ORDERED_TRIGGERS)
+    order_bridge.run_bridge()
+    assert placed == []
