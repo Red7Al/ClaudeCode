@@ -278,6 +278,9 @@ Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub em
 - No unverified figure is ever shown — not even with "disregard".
 - **One trigger calculation for the report and the bridge** (owner 2026-10-31: "never was more than one
   calculation needed"). Rule in `CLAUDE.md`.
+- **The bridge orders a report trigger only on its trigger day or the next trading day** (owner 2026-10-31, from a
+  replay: +1.29R on the trigger day, negative from 2 days late). Rule in `CLAUDE.md`. Measured on the live 2026-10-30
+  snapshot: 0 report triggers orderable on Monday 2026-11-02, against 28 under the rule shipped that morning.
 
 ## 5. Waiting on an owner decision (detail in `docs/archive/`)
 

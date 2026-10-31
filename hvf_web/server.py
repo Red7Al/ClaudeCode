@@ -1604,6 +1604,25 @@ _OPEN_SETUPS_TTL = 900
 # statements -- "stays until target or stop" (today) and triggers ~5-6 months old having "no value"
 # (2026-09-18, twice). On the 2026-10-08 data this kept 28 of 50 rows.
 REPORT_MAX_TRIGGER_AGE_DAYS = 90
+# Owner 2026-10-31, choosing from a replay of every report trigger of the last 90 days on the verified price
+# file: the Order Bridge orders a report trigger only on its trigger day or the next trading day. Ordered at
+# its original entry, the 89 triggers passing his limits averaged +1.29R on the trigger day, +0.14R one day
+# late, and -0.23R to -0.51R at every delay of 2 to 10 days. Older triggers stay on the report, unordered.
+BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS = 1
+
+
+def _utc_today() -> "_dt.date":
+    return _dt.datetime.now(_dt.timezone.utc).date()
+
+
+def _trading_days_since(day: str) -> int:
+    """Weekdays after `day` (YYYY-MM-DD) up to and including today, UTC: 0 on the trigger day, 1 the next
+    trading day. Exchange holidays are not known here, so a holiday counts as a trading day (stricter)."""
+    d, today, n = _dt.date.fromisoformat(day), _utc_today(), 0
+    while d < today:
+        d += _dt.timedelta(days=1)
+        n += d.weekday() < 5
+    return n
 
 
 def _open_trigger_setups(snap: dict):
@@ -1742,7 +1761,8 @@ def _sig_from_pick(pick: dict, rec: dict, mcap) -> dict:
 
 
 def report_order_sigs(login: str, snap: dict):
-    """{ticker: engine sig} for every OPEN trigger on this login's Scanner Report, or None when the trigger
+    """{ticker: engine sig} for every OPEN trigger on this login's Scanner Report no more than
+    BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS old (owner 2026-10-31), or None when the trigger
     history cannot be read (the report then hides every triggered row, so nothing may be ordered on one).
 
     THE ORDER BRIDGE'S TRIGGERED CANDIDATES (owner 2026-10-31). Until then the bridge kept its own
@@ -1761,6 +1781,11 @@ def report_order_sigs(login: str, snap: dict):
             continue
         pick = _report_pick(login, rec, setups, limits, mcaps.get(tk))
         if pick and pick.get("outcome", "OPEN") == "OPEN":
+            age = _trading_days_since(pick["trig_date"])
+            if age > BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS:
+                log.info(f"bridge: report trigger {tk} triggered {pick['trig_date']} is {age} trading days old "
+                         f"-- ordered only within {BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS} (owner 2026-10-31)")
+                continue
             out[tk] = dict(_sig_from_pick(pick, rec, mcaps.get(tk)), trig_date=pick["trig_date"])
     return out
 

@@ -7,6 +7,8 @@ rejects dropped without a log line. Fixture: MET's row on his live report that d
 the bridge blocked on VolumeScore 3 against 9 at its trigger; its scan price sits 1.52% past entry.
 """
 
+import datetime
+
 import trading_limits
 from hvf_web import order_bridge, server
 
@@ -31,6 +33,8 @@ def _wire(monkeypatch, records, setups):
     monkeypatch.setattr(scanner_snapshot_store, "load_snapshot",
                         lambda path: {"generated_utc": "2026-10-30T19:08:13.687802+00:00", "records": records})
     monkeypatch.setattr(server, "_open_trigger_setups", lambda snap: setups)
+    # MET triggered Friday 2026-10-23; Monday is the next trading day, inside the owner's 0-1 day rule
+    monkeypatch.setattr(server, "_utc_today", lambda: datetime.date(2026, 10, 26))
     monkeypatch.setattr(trading_limits, "user_limits", lambda name: LIMITS)
     monkeypatch.setattr(server, "_mcap_map", lambda: {"MET": MET_MCAP})
     monkeypatch.setattr(server, "_user_trade_allows", lambda name, rec: True)
@@ -180,3 +184,27 @@ def test_a_preorder_that_filled_on_the_trigger_date_is_that_triggers_order(monke
     monkeypatch.setattr(order_bridge, "_ordered_triggers", _REAL_ORDERED_TRIGGERS)
     order_bridge.run_bridge()
     assert placed == []
+
+
+# -- Owner 2026-10-31: order a report trigger only on its trigger day or the next trading day -----------------
+
+def test_a_trigger_two_trading_days_old_is_not_ordered(monkeypatch):
+    """Replay of the last 90 days: 2-10 days late, the owner's triggers averaged -0.23R to -0.51R."""
+    placed = _wire(monkeypatch, [MET_SCAN], {"MET": [MET_SETUP]})
+    monkeypatch.setattr(server, "_utc_today", lambda: datetime.date(2026, 10, 27))
+    order_bridge.run_bridge()
+    assert placed == []
+
+
+def test_a_trigger_on_its_trigger_day_is_ordered(monkeypatch):
+    placed = _wire(monkeypatch, [MET_SCAN], {"MET": [MET_SETUP]})
+    monkeypatch.setattr(server, "_utc_today", lambda: datetime.date(2026, 10, 23))
+    order_bridge.run_bridge()
+    assert [s["ticker"] for s, kw in placed] == ["MET"]
+
+
+def test_trading_days_skip_the_weekend(monkeypatch):
+    for today, n in (("2026-10-23", 0), ("2026-10-24", 0), ("2026-10-25", 0), ("2026-10-26", 1),
+                     ("2026-10-27", 2)):
+        monkeypatch.setattr(server, "_utc_today", lambda t=today: datetime.date.fromisoformat(t))
+        assert server._trading_days_since("2026-10-23") == n, today

@@ -158,6 +158,10 @@ workflow file changes, put today's date in its `name:`.
   the only definition of "a trigger to act on". The Order Bridge, emails and every other consumer call it; none
   re-derives triggers or limits from the snapshot or the latest bar. Measured 2026-10-30: the bridge kept its own
   definition and 40 of 66 report triggers got no order.
+- **The bridge orders a report trigger only on its trigger day or the next trading day -- owner 2026-10-31**
+  (`server.BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS`, applied inside `report_order_sigs`). Replay of every report trigger of
+  the last 90 days at its original entry: +1.29R on the trigger day, +0.14R one day late, -0.23R to -0.51R at 2-10
+  days late (89 triggers passing his limits). Older triggers stay on the report, unordered.
 - **AUS Open, UK Open and US Open stay DISABLED on cron-job.org — owner decision, settled 2026-10-08.**
   Last runs 2026-08-06. Do not re-enable them, do not "fix" anything that reports them missing, and do not
   raise them again. Session Watchdog skips any session whose cron-job.org job is disabled.
