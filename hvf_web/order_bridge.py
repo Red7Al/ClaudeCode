@@ -37,9 +37,18 @@ BRIDGE_MAX_PER_RUN = 6         # safety: at most this many NEW IG placements per
 _SNAPSHOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "snapshot.json")
 
 
-def _candidates() -> list:
-    """READY pre-orders from the snapshot worth handing to the order engine: quality > 50 and price
-    within 1.5% of entry (the engine re-checks both with live data — this is just the shortlist)."""
+def _candidates(login: str = None) -> list:
+    """Snapshot records to hand to the order engine, each carrying `_sig` when it is a report trigger.
+
+    TRIGGERED: EXACTLY the open triggers on the owner's Scanner Report, from the report's own calculation
+    (server.report_order_sigs -> _report_pick; owner 2026-10-31: "never was more than one calculation
+    needed"). Their levels and trigger-date measures go to the engine unchanged, with NO 1.5% pre-filter:
+    each goes to IG at its own entry, as "Create an order" places it (a limit at entry once price is past it),
+    so every report trigger leaves a working_orders row or a logged reason. A TRIGGERED scan record the report hides
+    is never ordered. Until 2026-10-31 this function judged the snapshot's current funnel on latest-bar
+    values inside 1.5% of the twice-daily scan price, silently, and 40 of 66 report triggers got no order.
+
+    READY (not yet triggered): the scan's own setup, quality over the floor and within 1.5% of entry."""
     # Supabase-first, exactly like hvf_web/server._load_snapshot (user 2026-08-15: "order bridge must
     # run"). Reading the local file directly only ever worked because this ran inside the laptop's Flask
     # process, which kept hvf_web/snapshot.json fresh. That file is gitignored and absent on a clean
@@ -48,12 +57,14 @@ def _candidates() -> list:
     # published object and still falls back to the local last-known-good copy on a configured machine.
     try:
         import scanner_snapshot_store
-        records = scanner_snapshot_store.load_snapshot(_SNAPSHOT).get("records", [])
+        _snap = scanner_snapshot_store.load_snapshot(_SNAPSHOT)
+        records, snap_gen = _snap.get("records", []), _snap.get("generated_utc")
     except Exception as e:
         log.warning(f"bridge: Scanner snapshot store unavailable ({e}); trying the local file")
         try:
             with open(_SNAPSHOT, encoding="utf-8") as fh:
-                records = json.load(fh).get("records", [])
+                _snap = json.load(fh)
+            records, snap_gen = _snap.get("records", []), _snap.get("generated_utc")
         except Exception as e2:
             log.warning(f"bridge: snapshot unreadable: {e2}")
             return []
@@ -65,11 +76,26 @@ def _candidates() -> list:
         _minq = float(cfg_num("bridge_min_quality", 50))
     except Exception:
         _minq = 50
+    report = None
+    try:
+        from hvf_web.server import report_order_sigs
+        report = report_order_sigs(login, {"generated_utc": snap_gen, "records": records})
+    except Exception as e:
+        log.warning(f"bridge: Scanner Report triggers unavailable ({e})")
+    if report is None:
+        log.warning("bridge: the Scanner Report's trigger history cannot be read -- no triggered setup is "
+                    "ordered this pass (the report hides them all)")
+        report = {}
     out = []
     for r in records:
-        # READY and TRIGGERED both qualify (user 2026-07-03) — a fresh trigger still within 1.5% of
-        # entry is pre-orderable at the same levels.
-        if not r.get("has_signal") or r.get("status") not in ("READY", "TRIGGERED"):
+        tk = r.get("ticker")
+        if tk in report:
+            sig = report[tk]
+            log.info(f"bridge: report trigger {tk} {sig['direction']} triggered {sig['trig_date']} "
+                     f"entry {sig['hvf_h3_level']} -> order engine")
+            out.append(dict(r, _sig=sig))
+            continue
+        if not r.get("has_signal") or r.get("status") != "READY":
             continue
         q, e, p = r.get("quality"), r.get("entry"), r.get("current_price")
         if not (isinstance(q, (int, float)) and q > _minq and e and p):
@@ -77,7 +103,8 @@ def _candidates() -> list:
         if abs(e / p - 1) * 100 > 1.5:
             continue
         out.append(r)
-    out.sort(key=lambda r: abs((r.get("entry") or 0) / (r.get("current_price") or 1) - 1))
+    _entry = lambda r: (r.get("_sig") or {}).get("hvf_h3_level") or r.get("entry") or 0
+    out.sort(key=lambda r: abs(_entry(r) / (r.get("current_price") or 1) - 1))
     return out
 
 
@@ -162,12 +189,46 @@ def _already_working(owner: str = None) -> set:
     return skip
 
 
+def _ordered_triggers(sigs: list, owner: str = None) -> set:
+    """Tickers whose report trigger this account has ALREADY ordered: a working_orders row for the same ticker
+    and direction placed on or after the trigger date, in ANY status. A trigger is ordered once. Without this,
+    the bridge would re-place a trigger every pass for its 90 days on the report after its order was stopped
+    out, expired or deleted -- _already_working sees only PENDING/WATCHING orders and open positions.
+    placed_at is set on every row (516 of 516, default now(), measured 2026-10-31). Fails closed, as
+    _already_working does: an unreadable guard aborts the pass rather than risk a second order."""
+    if not sigs:
+        return set()
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            rows = db.run("select ticker, direction, placed_at from working_orders "
+                          "where ticker = any(:tks) and user_id = any(:ids)",
+                          tks=sorted({s["ticker"] for s in sigs}), ids=account_scope.row_identities(owner))
+        finally:
+            db.close()
+    except Exception as e:
+        raise IdentityUnresolved(f"working_orders trigger lookup failed ({e}); refusing to place this pass")
+    done = set()
+    for s in sigs:
+        for tk, direction, placed in rows or []:
+            if tk == s["ticker"] and direction == s["direction"] and str(placed)[:10] >= s["trig_date"]:
+                log.info(f"bridge: report trigger {tk} {s['trig_date']} already ordered ({str(placed)[:16]}) "
+                         f"-- a trigger is ordered once")
+                done.add(tk)
+                break
+    return done
+
+
 def run_bridge() -> dict:
     """One bridge pass. Returns a summary dict {candidates, attempted, placed}."""
-    cands = _candidates()
+    from run_session import get_user_profile
+    import trading_limits
+    profile = get_user_profile()
+    cands = _candidates(trading_limits.login_for_profile(profile))
     summary = {"candidates": len(cands), "attempted": 0, "placed": 0, "let_winners_run": None}
     if not cands:
-        log.info("bridge: no READY setups within 1.5% with quality > 50 - nothing to do.")
+        log.info("bridge: no report triggers and no READY setups within 1.5% - nothing to do.")
         # Stop management is independent of whether this pass found a new candidate.  The function is
         # currently safety-disabled in ig_shim, so this is a no-op until the full per-user live path is
         # explicitly enabled after end-to-end verification.
@@ -178,7 +239,7 @@ def run_bridge() -> dict:
             log.warning(f"bridge: let-winners-run pass failed safely: {exc}")
         return summary
     try:
-        skip = _already_working()
+        skip = _already_working() | _ordered_triggers([r["_sig"] for r in cands if r.get("_sig")])
     except IdentityUnresolved as exc:
         # The duplicate guard could not be built, so we cannot prove this account is not already working
         # these instruments. Placing anyway risks a second live order. Abort the pass and say so loudly.
@@ -186,9 +247,7 @@ def run_bridge() -> dict:
         summary["aborted"] = str(exc)
         return summary
 
-    from run_session import get_user_profile
     from ig_shim import place_hvf_order_from_sig
-    profile = get_user_profile()
 
     # Real above_vwap/atr_expanding (user 2026-08-11, data-completeness audit): each record's OWN fields
     # from hvf_web/build_snapshot.py are ALWAYS None — get_hvf_signal_mtf() never computes them. server.py's
@@ -211,7 +270,7 @@ def run_bridge() -> dict:
         if tk in skip:
             continue
         card = r.get("_card") or {}
-        sig = {
+        sig = dict(r["_sig"]) if r.get("_sig") else {
             "ticker": tk,
             "direction": "BUY" if r.get("direction") == "BULL" else "SELL",
             "hvf_type": card.get("hvf_type") or ("BULLISH" if r.get("direction") == "BULL" else "BEARISH"),
@@ -227,7 +286,11 @@ def run_bridge() -> dict:
         }
         summary["attempted"] += 1
         try:
-            wo = place_hvf_order_from_sig(sig, profile, "WEB_BRIDGE", 1.0)
+            # A report trigger goes to IG now, as "Create an order" places it from the same row: a far one
+            # deferred as WATCHING would never be promoted (reconcile_fills.py header) and would block the
+            # ticker from every later pass.
+            wo = place_hvf_order_from_sig(sig, profile, "WEB_BRIDGE", 1.0,
+                                          watch=False if r.get("_sig") else None)
             if wo:
                 summary["placed"] += 1
                 log.info(f"bridge: {tk} -> working order ({wo.get('status', 'ok')})")

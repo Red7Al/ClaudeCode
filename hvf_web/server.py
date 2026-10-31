@@ -1714,6 +1714,57 @@ def _report_setup(name: str, ticker: str, setups: list, mcap, limits=None):
     return None
 
 
+def _report_pick(name: str, rec: dict, setups_map: dict, limits, mcap):
+    """The setup this login's Scanner Report row shows for `rec`, or None -- THE ONE CALCULATION of "a
+    trigger to act on" (owner 2026-10-31: "never was more than one calculation needed"). The report
+    (api_records), "Create an order" (_order_sig) and the Order Bridge (report_order_sigs) all call this.
+
+    _report_setup's trigger-date limits, then the viewer's own market switches and direction/location
+    filters as the page applies them (tradeVisible), so the server's report count matches the screen
+    (owner 2026-10-10: 42 here vs 29 shown -- all 13 in markets he had switched off)."""
+    pick = _report_setup(name, rec.get("ticker"), (setups_map or {}).get(rec.get("ticker")), mcap, limits)
+    if pick and not _user_trade_allows(name, dict(rec, direction=pick["direction"])):
+        return None
+    return pick
+
+
+def _sig_from_pick(pick: dict, rec: dict, mcap) -> dict:
+    """Engine sig for a report setup: its own levels, and its measures judged at the trigger date, as the
+    report was (owner 2026-10-08)."""
+    bull = pick["direction"] == "BULL"
+    return {"ticker": rec.get("ticker"), "direction": "BUY" if bull else "SELL",
+            "hvf_type": "BULLISH" if bull else "BEARISH",
+            "hvf_signal": "TRIGGERED", "hvf_h3_level": pick["entry"], "hvf_stop_level": pick["stop"],
+            "hvf_target": pick["target"], "hvf_quality": pick["quality"], "hvf_risk_reward": pick["rr"],
+            "hvf_timeframe": pick["timeframe"], "index": rec.get("market"), "location": rec.get("location"),
+            "above_vwap": pick["above_vwap"], "atr_expanding": pick["atr_expanding"],
+            "rvol": pick["rvol"], "volume_score": pick["volume_score"], "mcap": mcap}
+
+
+def report_order_sigs(login: str, snap: dict):
+    """{ticker: engine sig} for every OPEN trigger on this login's Scanner Report, or None when the trigger
+    history cannot be read (the report then hides every triggered row, so nothing may be ordered on one).
+
+    THE ORDER BRIDGE'S TRIGGERED CANDIDATES (owner 2026-10-31). Until then the bridge kept its own
+    definition -- the snapshot's one current funnel per ticker, judged on latest-bar values, inside 1.5% of
+    the twice-daily scan price, rejects dropped without a log line -- and 40 of the 66 triggers on his report
+    (2026-10-30) got no order: MET VolumeScore 3 against 9 at its trigger, RDDT Quality 44 against 66,
+    NXT.AX (TARGET +31.74%) never considered at all."""
+    import trading_limits
+    setups = _open_trigger_setups(snap)
+    if setups is None:
+        return None
+    limits, mcaps, out = trading_limits.user_limits(login), _mcap_map(), {}
+    for rec in snap.get("records", []):
+        tk = rec.get("ticker")
+        if not tk or tk not in setups:
+            continue
+        pick = _report_pick(login, rec, setups, limits, mcaps.get(tk))
+        if pick and pick.get("outcome", "OPEN") == "OPEN":
+            out[tk] = dict(_sig_from_pick(pick, rec, mcaps.get(tk)), trig_date=pick["trig_date"])
+    return out
+
+
 def _snapshot_trigger_dates(snap: dict) -> dict:
     """{ticker: 'YYYY-MM-DD'} — the date each current funnel ACTUALLY TRIGGERED.
 
@@ -1955,13 +2006,7 @@ def api_records():
                     recs[-1]["report_ok"] = False   # cannot be vetted -- hidden, never shown unfiltered
             else:
                 row = recs[-1]
-                pick = _report_setup(viewer, row.get("ticker"), setups_map.get(row.get("ticker")),
-                                     row.get("mcap"), viewer_limits)
-                # The viewer's own market switches and direction/location filters, as the page applies them
-                # (tradeVisible), so the server's report count matches the screen (owner 2026-10-10: 42 here
-                # vs 29 shown -- all 13 in markets he had switched off).
-                if pick and not _user_trade_allows(viewer, dict(row, direction=pick["direction"])):
-                    pick = None
+                pick = _report_pick(viewer, row, setups_map, viewer_limits, row.get("mcap"))
                 if pick:
                     # The setup the owner acts on: newest open trigger that passed his limits on its
                     # trigger date. Its levels and trigger-date measures replace the scan's view.
@@ -2954,21 +2999,14 @@ def _order_sig(tk, user):
     pick = None
     if setups:
         import trading_limits
-        pick = _report_setup(user, tk, setups.get(tk), _mcap_map().get(tk), trading_limits.user_limits(user))
+        pick = _report_pick(user, rec, setups, trading_limits.user_limits(user), _mcap_map().get(tk))
     if not pick:
         return _sig_from_snapshot(tk), False
     if pick.get("outcome", "OPEN") != "OPEN":
         # The row shows a FINISHED trade (owner 2026-10-18: it stays on the report showing its outcome).
         # Nothing is ordered on it, and not the scan's setup either -- that is not what the screen shows.
         return None, False
-    bull = pick["direction"] == "BULL"
-    return {"ticker": tk, "direction": "BUY" if bull else "SELL", "hvf_type": "BULLISH" if bull else "BEARISH",
-            "hvf_signal": "TRIGGERED", "hvf_h3_level": pick["entry"], "hvf_stop_level": pick["stop"],
-            "hvf_target": pick["target"], "hvf_quality": pick["quality"], "hvf_risk_reward": pick["rr"],
-            "hvf_timeframe": pick["timeframe"], "index": rec.get("market"), "location": rec.get("location"),
-            # judged at the trigger date, as the report was (owner 2026-10-08)
-            "above_vwap": pick["above_vwap"], "atr_expanding": pick["atr_expanding"],
-            "rvol": pick["rvol"], "volume_score": pick["volume_score"], "mcap": _mcap_map().get(tk)}, True
+    return _sig_from_pick(pick, rec, _mcap_map().get(tk)), True
 
 
 def _checked_order(body):

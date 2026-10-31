@@ -114,7 +114,7 @@ def test_order_bridge_candidates_use_live_vwap_atr_not_dead_field(monkeypatch):
               "timeframe": "daily-240", "market": "S&P 500", "location": "US",
               "above_vwap": None, "atr_expanding": None, "_card": {}}   # dead static fields, real-world shape
 
-    monkeypatch.setattr(order_bridge, "_candidates", lambda: [record])
+    monkeypatch.setattr(order_bridge, "_candidates", lambda login=None: [record])
     monkeypatch.setattr(order_bridge, "_already_working", lambda: set())
     monkeypatch.setattr("run_session.get_user_profile", lambda: {"name": "Alex", "user_id": "u1"})
     monkeypatch.setattr("hvf_web.server._live_vwap_atr", lambda snap: {"AAPL": (True, False)})
@@ -122,7 +122,7 @@ def test_order_bridge_candidates_use_live_vwap_atr_not_dead_field(monkeypatch):
 
     seen_sigs = []
 
-    def _fake_place(sig, profile, session_name, stress_mult):
+    def _fake_place(sig, profile, session_name, stress_mult, **kw):
         seen_sigs.append(sig)
         return None   # stop here — we only care what sig was built, not the rest of the placement path
 
@@ -145,7 +145,7 @@ def test_order_bridge_falls_back_gracefully_if_live_lookup_unavailable(monkeypat
               "timeframe": "daily-240", "market": "S&P 500", "location": "US",
               "above_vwap": None, "atr_expanding": None, "_card": {}}
 
-    monkeypatch.setattr(order_bridge, "_candidates", lambda: [record])
+    monkeypatch.setattr(order_bridge, "_candidates", lambda login=None: [record])
     monkeypatch.setattr(order_bridge, "_already_working", lambda: set())
     monkeypatch.setattr("run_session.get_user_profile", lambda: {"name": "Alex", "user_id": "u1"})
 

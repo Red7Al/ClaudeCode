@@ -6,7 +6,8 @@ def test_bridge_runs_guarded_stop_management_when_no_new_candidates(monkeypatch)
     from hvf_web import order_bridge
     import ig_shim
 
-    monkeypatch.setattr(order_bridge, "_candidates", lambda: [])
+    monkeypatch.setattr(order_bridge, "_candidates", lambda login=None: [])
+    monkeypatch.setattr("run_session.get_user_profile", lambda: {"name": "Owner", "user_id": "u1"})
     monkeypatch.setattr(ig_shim, "run_let_winners_run", lambda: {"disabled": True, "checked": 0})
 
     summary = order_bridge.run_bridge()

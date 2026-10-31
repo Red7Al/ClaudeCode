@@ -3580,7 +3580,7 @@ def size_working_order(ticker: str, direction: str, entry, stop, target, profile
 
 
 def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
-                             stress_mult: float = 1.0, size_override=None) -> Optional[dict]:
+                             stress_mult: float = 1.0, size_override=None, watch=None) -> Optional[dict]:
     """
     Route a scanned HVF signal to a pending working order (the entry/stop/target
     come from the pattern itself). Sizes from |entry − stop| — the actual risk
@@ -3781,8 +3781,10 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         # jobs, the acting login for a manual place. The decision is made HERE, where the profile is
         # known, rather than inside place_working_order, which only ever receives a user_id.
         let_run=_lwr_cfg(profile.get("name"))[0], lwr_owner_login=profile.get("name"),
-        # "Create an order" places on IG now; only the automated paths defer far-from-entry setups.
-        watch=(session_name != "WEB_MANUAL"))
+        # "Create an order" places on IG now; only the automated paths defer far-from-entry setups. The bridge
+        # passes watch=False for a Scanner Report trigger (owner 2026-10-31): nothing promotes a WATCHING row
+        # while the session monitors are off (reconcile_fills.py header), so deferring one parks it for ever.
+        watch=(session_name != "WEB_MANUAL") if watch is None else bool(watch))
 
     if result and not result.get("updated") and not result.get("watching"):
         try:
