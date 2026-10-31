@@ -40,6 +40,10 @@ speaking.** Every one had a single cheap command that would have prevented it.
 - **Brevity.** The answer and the one number behind it. No menus of options — one recommendation.
 - **Own the work.** Options and a recommendation come from you. "I can't" needs evidence: check `~/.ssh`,
   `gh`, `.ionos.env`, the cron-job.org API before handing anything back. The owner deploys nothing.
+- **Decide and act; do not ask him again and again -- owner 2026-10-31: "You must have the time, resource and skill
+  to make fully competent decisions without asking me over and again in emails. Why have a dog and bark myself?"**
+  Make the engineering decision, prove it on real data, ship it, and tell him once with the result. Do not add
+  emails to his inbox to check your work -- outcome checks report to the agent, who fixes what they find.
 - **Commit anything successfully tested.** Do not leave verified work waiting to be offered.
 - **If a change moves a number he reads, measure old vs new and tell him BEFORE shipping.**
 - **Record his decisions in the repository the moment he makes them — unprompted** (owner, 2026-10-21).
