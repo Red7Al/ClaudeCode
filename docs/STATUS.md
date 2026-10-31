@@ -290,7 +290,12 @@ Closed by the owner: alerts — "I have had alerts from email anyway"; GitHub em
 
 ## 6. Complaints on record — read before speaking
 
-Eleven, all upheld, in `ChangeRequests/20260918.txt`. **The eleventh (2026-10-27): the rules on assumptions are
+Twelve, all upheld, in `ChangeRequests/20260918.txt`. **The twelfth (2026-10-31): "never was more than one
+calculation needed - this is reckless"** -- the Order Bridge kept its own trigger definition after the report moved to
+trigger-date values (10-09); 40 of 66 report triggers got no order. The same defect had been patched one case at a time
+four times and never swept. Found only by comparing outcomes (report triggers vs orders), not by reading code. Prove
+correctness by comparing outcomes on real data, manage it without adding to his inbox, and never blame the tooling.
+**The eleventh (2026-10-27): the rules on assumptions are
 ignored and the owner has to keep restating them** -- a data clean-up checked a subset and was called resolved.
 Every data check prints rows checked of the table's measured count, and nothing is called clean unless that
 line covers all of it. The tenth (2026-10-18) carries the FIRST FORMAL WARNING
