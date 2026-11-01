@@ -50,6 +50,10 @@ speaking.** Every one had a single cheap command that would have prevented it.
   An architectural or standing rule goes into `CLAUDE.md`; what was decided and its state into
   `docs/STATUS.md`; the work into a `ChangeRequests/` line. Then commit, push and deploy in the same turn.
   Agent memory is per-machine and is never the only record of an owner decision.
+- **A complaint is sent to Anthropic as it is raised -- owner 2026-11-01** ("Complaint records must be submitted as
+  they are raised"; chose "Send to Anthropic"). Record it in `ChangeRequests/` AND draft it with the feedback tool in
+  the same turn (queued on his machine; he sends it with `/feedback`). The 12 complaints of 2026-09-28..10-31 were
+  drafted that day as 9 items, one per distinct issue.
 - **His outstanding instructions are the queue.** Faults you find yourself are parked unless they block
   them.
 
@@ -163,9 +167,11 @@ workflow file changes, put today's date in its `name:`.
   re-derives triggers or limits from the snapshot or the latest bar. Measured 2026-10-30: the bridge kept its own
   definition and 40 of 66 report triggers got no order.
 - **The bridge orders a report trigger only on its trigger day or the next trading day -- owner 2026-10-31**
-  (`server.BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS`, applied inside `report_order_sigs`). Replay of every report trigger of
-  the last 90 days at its original entry: +1.29R on the trigger day, +0.14R one day late, -0.23R to -0.51R at 2-10
-  days late (89 triggers passing his limits). Older triggers stay on the report, unordered.
+  (`order_bridge.BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS`, applied in `order_bridge._candidates`: at most 1 weekday since
+  the trigger date AND, when the summary's `last_bar` section has the instrument, no bar after the trigger bar -- a gap
+  in the bars can only tighten it; a one-day exchange holiday after a trigger costs that order). Replay of every report
+  trigger of the last 90 days at its original entry: +1.29R on the trigger day, +0.14R one day late, -0.23R to -0.51R
+  at 2-10 days late (89 triggers passing his limits). Older triggers stay on the report, unordered.
 - **No order risks more than 2x the risk per trade because of IG's minimum deal size -- owner 2026-11-01**
   ("please progress with this"). Measured that day: the 43 filled bridge trades made +4.70R but lost £16.84; the
   10 placed at IG's minimum with > 2x the 2% risk held 73% of all £ at risk and returned -0.79R. Such an order is
