@@ -232,6 +232,16 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
   of them price bars. Since the 22:17Z baseline the website has done none; the window between a snapshot install
   and its summary (~3 min on 10-26 evening) is the remaining exposure. Next: a full day's measurement.
 
+## 2l. 2026-11-01 -- risk cap on minimum-size orders (owner: "please progress with this")
+
+- `cbe6777` (`ig_shim.calculate_position_size`): when IG's minimum deal size would risk more than
+  `RISK_CAP_MULT` (2.0) x the risk per trade, size 0 and reason `RISK_CAP` (daily digest, not paged) instead of
+  placing at the minimum. QA `04b95ab`: 28 tests, 21/21 mutations killed.
+- Clean CI-env worktree at `04b95ab`: 2,003 passed, 17 skipped, pytest exit 0. Pushed; deployed 18:24Z,
+  `/api/build` `fc7ae5cc3f8c` = HEAD.
+- NOT YET VERIFIED LIVE: the first Order Bridge run with it is Mon 2026-11-02 06:00 UTC (weekdays only,
+  `setup_cronjobs.py` "Order Bridge"). Check that run's log for `RISK_CAP` skips against the orders placed.
+
 ## 3. Open, measured, not fixed
 
 1. **Website pool use, now measured.** 2 web processes (40 concurrent `/api/report-check?process=1` calls:
