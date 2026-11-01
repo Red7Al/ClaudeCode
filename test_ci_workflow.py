@@ -30,9 +30,10 @@ def test_the_offline_suite_has_room_to_finish(wf):
     test_js_behaviour spawns a Node subprocess per test -- so the local time is not a safe guide."""
     m = re.search(r"timeout-minutes:\s*(\d+)", wf)
     assert m, "the job has no timeout at all"
-    assert int(m.group(1)) >= 20, (
-        f"timeout-minutes is {m.group(1)}; the suite already needed 9m48s in September 2026 and keeps "
-        "growing, so anything under 20 puts it back on the edge of silent cancellation")
+    # 2026-11-01: a pass took 24m49s (10-31) and the next three runs were killed at 25m15s.
+    assert int(m.group(1)) >= 40, (
+        f"timeout-minutes is {m.group(1)}; the suite needed 24m49s on the runner on 2026-10-31 and keeps "
+        "growing, so anything under 40 puts it back on the edge of silent cancellation")
 
 
 def test_a_timed_out_run_still_raises_the_alarm(wf):

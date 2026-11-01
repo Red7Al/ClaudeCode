@@ -1,4 +1,4 @@
-name: Offline Python Regression Tests (2026-08-04)
+name: Offline Python Regression Tests (2026-11-01)
 
 # Runs the OFFLINE Python regression suite on every push that touches detection
 # code. A red run means a change altered behaviour — investigate before trusting
@@ -38,7 +38,9 @@ jobs:
     # below, that meant no CI signal at all and no notification that there was none. Locally the same
     # suite is ~150s; the runner is slower and test_js_behaviour spawns a Node subprocess per test.
     # Headroom, so a suite that keeps growing does not silently return to timing out.
-    timeout-minutes: 25
+    # 45, not 25 (2026-11-01): the 10-31 13:54 pass took 24m49s; the next three runs (10-31 19:18, 11-01 14:30,
+    # 11-01 18:24) were all killed at 25m15s in the pytest step -- no CI verdict for a day.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-python@v6
