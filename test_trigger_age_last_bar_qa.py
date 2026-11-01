@@ -103,6 +103,25 @@ def test_a_snapshot_with_no_generated_time_omits_the_section(monkeypatch, tmp_pa
     assert prs.last_bar_section({"records": [{"ticker": "MET"}]}) is None
 
 
+def test_bars_metadata_without_a_build_time_omits_the_section_not_the_build(monkeypatch, tmp_path):
+    d = _bars_dir(tmp_path, LIVE_TAILS)
+    meta = json.loads(open(os.path.join(d, bars_file.META_NAME), encoding="utf-8").read())
+    meta.pop("built_at")
+    open(os.path.join(d, bars_file.META_NAME), "w", encoding="utf-8").write(json.dumps(meta))
+    monkeypatch.setenv("PRICE_BARS_DIR", d)
+    assert prs.last_bar_section(_snap(["MET"])) is None
+
+
+def test_a_bars_file_that_fails_its_row_count_omits_the_section_not_the_build(monkeypatch, tmp_path):
+    monkeypatch.setenv("PRICE_BARS_DIR", _bars_dir(tmp_path, LIVE_TAILS, meta_extra={"rows": 99}))
+    assert prs.last_bar_section(_snap(["MET"])) is None
+
+
+def test_an_unparseable_snapshot_time_omits_the_section(monkeypatch, tmp_path):
+    monkeypatch.setenv("PRICE_BARS_DIR", _bars_dir(tmp_path, LIVE_TAILS))
+    assert prs.last_bar_section(_snap(["MET"], gen="not-a-time")) is None
+
+
 def test_the_builder_writes_the_section():
     import inspect
     assert 'sections["last_bar"] = last_bar_section(snap)' in inspect.getsource(prs.build)
@@ -145,11 +164,36 @@ def test_last_bar_equal_to_the_trigger_date_is_orderable(monkeypatch, caplog):
     assert placed == ["MET"]
 
 
-def test_a_holiday_keeps_the_trigger_orderable(monkeypatch, caplog):
-    """No bar on D+1 (exchange closed): 2 weekdays later it is still the next trading day for that market."""
+def test_a_holiday_after_the_trigger_costs_its_order(monkeypatch, caplog):
+    """c180e70, a deliberate decision: no bar on D+1 (exchange closed), but 2 weekdays have passed -- the weekday
+    limit always applies, so the trigger is NOT ordered (replay: one more day late averaged -0.23R)."""
     placed, _a, _s = _bridge(monkeypatch, caplog, {"MET": "2026-10-23"}, {"MET": [MET_SETUP]}, today="2026-10-27")
-    assert placed == ["MET"]
-    assert not _warnings(caplog, "judged by weekdays"), "a last-bar date was there: no weekday fallback"
+    assert placed == []
+    (w,) = _warnings(caplog, "past their trigger day")
+    assert "MET 2026-10-23 (2d)" in w and "(bar" not in w
+    assert not _warnings(caplog, "judged by weekdays"), "a last-bar date was there: it is not a weekday-only ticker"
+
+
+def test_a_gap_in_the_bars_never_keeps_a_trigger_orderable(monkeypatch, caplog):
+    """QA Defect 1 (a2b2976): SAP.DE's newest close in the live bars file of 2026-10-31 was 10-29 (its 10-30 bar
+    missing). A 10-29 trigger on Monday 11-02 is 2 weekdays old: not ordered, gap or no gap."""
+    rec, setups = _trig("SAP.DE", "2026-10-29")
+    placed, _a, _s = _bridge(monkeypatch, caplog, {"SAP.DE": "2026-10-29"}, setups, records=[rec], today="2026-11-02")
+    assert placed == []
+
+
+def test_a_dead_feed_never_keeps_a_trigger_orderable(monkeypatch, caplog):
+    """IPF.L in the live files: an OPEN trigger of 2026-08-04 whose bars stop on 2026-08-04."""
+    rec, setups = _trig("IPF.L", "2026-08-04")
+    placed, _a, _s = _bridge(monkeypatch, caplog, {"IPF.L": "2026-08-04"}, setups, records=[rec], today="2026-10-30")
+    assert placed == []
+
+
+def test_a_trigger_failing_both_checks_is_listed_once(monkeypatch, caplog):
+    placed, _a, _s = _bridge(monkeypatch, caplog, {"MET": "2026-10-27"}, {"MET": [MET_SETUP]}, today="2026-10-27")
+    assert placed == []
+    (w,) = _warnings(caplog, "past their trigger day")
+    assert w.count("MET 2026-10-23") == 1 and "1 report trigger(s)" in w
 
 
 def test_a_bar_after_the_trigger_bar_ages_it_whatever_the_weekdays(monkeypatch, caplog):
@@ -234,17 +278,9 @@ def test_one_weekday_warning_line_names_every_fallback_ticker(monkeypatch, caplo
     assert "3 report trigger(s)" in w and all(t in w for t in tks)
 
 
-_TEN_CHAR_BAD = pytest.mark.xfail(strict=True, reason=(
-    "QA 2026-10-31: with a last-bar date present, a 10-character date that is not ISO is never parsed; "
-    "'2026-10-23' > '23/10/2026' is False, so the trigger is ORDERED. Spec a2b2976 allows it; trig_date is "
-    "str(date)[:10] from squeeze_history, so not seen in live data. Remove this mark when the date is validated."))
-
-
 @pytest.mark.parametrize("bad,section", [
-    *[(b, s) for b in (None, "", 20261023, "2026-10-2", "2026-10-23T00:00:00")
-      for s in ({"MET": "2026-10-23", "MET2": "2026-10-23"}, None)],
-    ("23/10/2026", None),
-    pytest.param("23/10/2026", {"MET": "2026-10-23", "MET2": "2026-10-23"}, marks=_TEN_CHAR_BAD),
+    (b, s) for b in (None, "", 20261023, "2026-10-2", "2026-10-23T00:00:00", "23/10/2026", "2026-13-45")
+    for s in ({"MET": "2026-10-23", "MET2": "2026-10-23"}, None)
 ])
 def test_an_unreadable_trigger_date_skips_only_that_trigger(monkeypatch, caplog, bad, section):
     recs = [MET_SCAN, dict(MET_SCAN, ticker="MET2", status="READY", current_price=98.6)]
