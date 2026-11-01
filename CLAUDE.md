@@ -154,6 +154,8 @@ workflow file changes, put today's date in its `name:`.
 `ChangeRequests/*.txt` is the live worklist; the admin Change Requests tab parses it. These files are
 **deliberately untracked** and reach the site by deploy — never add them to git.
 
+- **Never delete a ChangeRequests file -- owner 2026-11-01: "do not delete the files !!"** A consolidated
+  register (`20261101.txt`, every open item copied verbatim) does not make the earlier files disposable.
 - Mark an item `[In Progress]` the moment you pick it up, `[Completed]` only when verified. Never batch.
 - The marker must be the **last token** on the line — `_CR_TAIL` is end-anchored; anywhere else reads as
   Not Started. Validate with `hvf_web.server._cr_status`, never a substring check.
