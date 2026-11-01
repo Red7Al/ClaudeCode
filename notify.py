@@ -873,6 +873,12 @@ _MISSED_TRADE_CLASSES = [
      "(open positions use more margin than the balance) — nothing can trade on ANY instrument until "
      "you close a position or add funds. Otherwise: fund above the largest gap (+ a buffer), or remove "
      "the instrument from the trade universe (it still publishes). NB Bitcoin's minimum alone is ~£600."),
+    # Before CAP: its needle "cap" also appears in "risk cap".
+    ("RISK_CAP", "over the risk cap",
+     "IG's minimum bet size for this instrument would risk more than twice the risk per trade at this "
+     "stop (owner 2026-11-01: on the 43 filled bridge trades, those placed this way held 73% of all £ at "
+     "risk and returned -0.79R). Deliberate -- no action needed. It clears when the balance grows or the "
+     "stop is tighter."),
     ("SIZE_ZERO", "calculated size is 0",
      "The risk-based position size (2% of available balance ÷ stop distance) came "
      "out below IG's minimum bet size for this instrument — likely a zero/garbage stop "
@@ -898,7 +904,7 @@ _MISSED_TRADE_CLASSES = [
 # deal margin) and INSUFFICIENT_FUNDS (free margin already used) — both recur every cycle and the
 # operator asked not to be paged per occurrence. Every OTHER block class (incl. a genuine SIZE_ZERO
 # from a bad stop/epic) still pages, so we never hide a fixable failure.
-_SILENT_MISSED_TRADE_CLASSES = {"ACCOUNT_TOO_SMALL", "INSUFFICIENT_FUNDS"}
+_SILENT_MISSED_TRADE_CLASSES = {"ACCOUNT_TOO_SMALL", "INSUFFICIENT_FUNDS", "RISK_CAP"}
 
 
 def _classify_missed_trade(reason: str):

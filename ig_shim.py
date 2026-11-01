@@ -842,6 +842,12 @@ def order_skip_reason(ticker):
     return LAST_ORDER_SKIP.pop(ticker, None)
 
 
+# Owner 2026-11-01 ("please progress with this"): no order risks more than RISK_CAP_MULT x the risk per trade
+# because IG's minimum deal size forces it up. Measured that day on the 43 filled bridge trades: +4.70R but
+# -£16.84; the 10 placed at IG's minimum with > 2x the 2% risk held 73% of all £ at risk and returned -0.79R.
+RISK_CAP_MULT = 2.0
+
+
 def calculate_position_size(epic: str, stop_distance: float,
                             risk_amount: float,
                             available_funds: float = None) -> tuple[float, float]:
@@ -920,6 +926,17 @@ def calculate_position_size(epic: str, stop_distance: float,
             # Margin cost of minimum deal = min_size × price × margin_factor
             min_size_margin_cost = min_size * price * margin_factor
 
+            min_size_risk = min_size * stop_distance
+            if risk_amount > 0 and min_size_risk > RISK_CAP_MULT * risk_amount:
+                # IG's minimum would risk more than the cap allows (owner 2026-11-01) -- no order.
+                log.warning(
+                    f"{epic}: IG minimum size {min_size} risks {min_size_risk:.2f} at stop distance "
+                    f"{stop_distance}, above the cap {RISK_CAP_MULT:g} x {risk_amount:.2f} -- skipping trade"
+                )
+                LAST_SIZE_SKIP[epic] = ("RISK_CAP", round(min_size_risk, 2),
+                                        round(RISK_CAP_MULT * risk_amount, 2), min_size)
+                return 0.0, stop_distance
+
             if available > 0 and (available * 0.9) >= min_size_margin_cost:
                 # Account CAN support the minimum deal — use it.
                 # The trade will slightly exceed the configured risk_per_trade
@@ -971,6 +988,13 @@ def describe_size_skip(ticker: str, epic: str) -> str:
     so it classes SIZE_ZERO (paged). Distinguishes three cases:
       • margin DEFICIT (free balance < 0)  • IG-minimum unaffordable  • generic zero-size."""
     skip = LAST_SIZE_SKIP.get(epic or "")
+    if skip and skip[0] == "RISK_CAP":
+        # Keeps the literal "risk cap" so notify classes it RISK_CAP (daily digest, owner policy -- not paged).
+        risk, cap, _min = skip[1], skip[2], (skip[3] if len(skip) > 3 else None)
+        _sz = f"size {_min:g}" if isinstance(_min, (int, float)) else "position"
+        return (f"{ticker}: over the risk cap -- IG's smallest allowed {_sz} would risk £{risk:.2f} at this "
+                f"stop, more than the £{cap:.2f} cap ({RISK_CAP_MULT:g} x the risk per trade; owner 2026-11-01). "
+                f"No order placed.")
     if skip and skip[0] == "ACCOUNT_TOO_SMALL":
         needed, have = skip[1], skip[2]
         if isinstance(have, (int, float)) and have < 0:
