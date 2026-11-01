@@ -242,6 +242,19 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
 - NOT YET VERIFIED LIVE: the first Order Bridge run with it is Mon 2026-11-02 06:00 UTC (weekdays only,
   `setup_cronjobs.py` "Order Bridge"). Check that run's log for `RISK_CAP` skips against the orders placed.
 
+## 2m. 2026-11-01 -- change requests consolidated and checked (owner review pending)
+
+- `ChangeRequests/20261101.txt`: all 379 items not Completed/Cancelled in the 33 earlier files, checked one
+  by one. 192 found already done (123 by an identical Completed request, 64 by code/live/register evidence,
+  5 duplicates) are listed as comments; 155 remain as items in four sections: not done 78, not provable 27,
+  dormant (X/Slack, nothing run since June) 29, owner's decision 21. Evidence on the `#` line under each.
+- Owner: "do not delete the files" (rule in CLAUDE.md) and "do not progress with any until they are
+  reviewed" -- nothing in the file is to be worked on until he has reviewed it.
+- Found while checking, not fixed: Morning Chain 2026-10-31 (run 41164681023) failed in the HVF report on
+  the Storage upload 400, skipping that day's report email, precompute, summary and HVF orders; a refused
+  upload fails the whole report job. Storage itself now proven (object 2026-11-01 19:32:35Z).
+- CI timeout 25 -> 45 (`9a6f14c`): run 41340458174 passed in 27m51s.
+
 ## 3. Open, measured, not fixed
 
 1. **Website pool use, now measured.** 2 web processes (40 concurrent `/api/report-check?process=1` calls:
