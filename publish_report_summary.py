@@ -63,7 +63,16 @@ def last_bar_section(snap: dict):
     bars file this job fetched (PRICE_BARS_DIR). The Order Bridge orders a report trigger only while its
     instrument has no bar after the trigger bar (owner 2026-10-31: trigger day or next trading day), so the
     exchange's own sessions decide -- its holidays and time zone included, no calendar here. None when the file
-    is absent or was built more than 24 h before the snapshot: the bridge then falls back to counting weekdays."""
+    is absent, unreadable, or built more than 24 h from the snapshot: the bridge then counts weekdays only. Never
+    fails the summary build (2026-10-31 test review)."""
+    try:
+        return _last_bar_section(snap)
+    except Exception as e:
+        print(f"last_bar: price bars file unreadable ({type(e).__name__}: {e}) -- section omitted")
+        return None
+
+
+def _last_bar_section(snap: dict):
     d = os.environ.get("PRICE_BARS_DIR")
     if not d or not os.path.isfile(os.path.join(d, "price_bars.meta.json")):
         print("last_bar: no price bars file in this job -- section omitted")
