@@ -166,6 +166,10 @@ workflow file changes, put today's date in its `name:`.
   (`server.BRIDGE_MAX_TRIGGER_AGE_TRADING_DAYS`, applied inside `report_order_sigs`). Replay of every report trigger of
   the last 90 days at its original entry: +1.29R on the trigger day, +0.14R one day late, -0.23R to -0.51R at 2-10
   days late (89 triggers passing his limits). Older triggers stay on the report, unordered.
+- **No order risks more than 2x the risk per trade because of IG's minimum deal size -- owner 2026-11-01**
+  ("please progress with this"). Measured that day: the 43 filled bridge trades made +4.70R but lost £16.84; the
+  10 placed at IG's minimum with > 2x the 2% risk held 73% of all £ at risk and returned -0.79R. Such an order is
+  skipped with a logged reason, not placed at the minimum (`ig_shim.calculate_position_size`).
 - **AUS Open, UK Open and US Open stay DISABLED on cron-job.org — owner decision, settled 2026-10-08.**
   Last runs 2026-08-06. Do not re-enable them, do not "fix" anything that reports them missing, and do not
   raise them again. Session Watchdog skips any session whose cron-job.org job is disabled.
