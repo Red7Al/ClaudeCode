@@ -4420,10 +4420,10 @@ def test_instruments_table_has_one_cell_per_header_including_last_triggered():
 
     assert "last_trig" in headers
     assert headers.index("last_trig") == headers.index("quality") + 1
-    assert cells == len(headers) == 15
-    assert f'vtable("instr-rows"' in body and '}, 15, "No instruments match.")' in body
-    assert 'colspan="15" class="empty sqh-loading"' in head.string[head.start(): head.start() + 120]
-    assert body.count('colspan="15"') == 1, "the loading row must span the new column too"
+    assert cells == len(headers) == 16   # 16th: price_now (owner 2026-11-02)
+    assert f'vtable("instr-rows"' in body and '}, 16, "No instruments match.")' in body
+    assert 'colspan="16" class="empty sqh-loading"' in head.string[head.start(): head.start() + 120]
+    assert body.count('colspan="16"') == 1, "the loading row must span the new column too"
 
 
 def test_instruments_asks_again_while_squeeze_history_is_warming():

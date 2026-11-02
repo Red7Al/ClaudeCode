@@ -77,7 +77,7 @@ def test_every_section_the_builder_writes_is_read_by_a_helper():
     built = set(__import__("re").findall(r'"(\w+)": server\._', inspect.getsource(pub.build)))
     read = set(__import__("re").findall(r'_summary_section\("(\w+)"', src))
     built |= set(__import__("re").findall(r'sections\["(\w+)"\] = ', inspect.getsource(pub.build)))
-    assert built == read and len(built) == 12, (built, read)
+    assert built == read and len(built) == 13, (built, read)   # 13th: latest_close (owner 2026-11-02, Price now)
 
 
 def test_a_deploy_never_ships_a_local_summary_over_the_hosts():
@@ -182,7 +182,12 @@ def test_a_failing_extras_step_does_not_cost_the_whole_summary(monkeypatch):
 def test_only_a_recent_close_counts_as_now():
     import inspect
     import publish_report_summary as pub
-    assert "bar_date >= current_date - 7" in inspect.getsource(pub.report_extras)
+    # The 7-day rule moved with the query into latest_close_section (2026-11-02); report_extras takes its Now from
+    # that section and must not carry a second, unfiltered query of its own.
+    assert "bar_date >= current_date - 7" in inspect.getsource(pub.latest_close_section)
+    extras = inspect.getsource(pub.report_extras)
+    assert "db.run(" not in extras and "get_db" not in extras
+    assert "latest_close_section(" in extras
 
 
 def test_the_order_bridge_gets_the_evening_snapshot_and_summary_from_ionos():

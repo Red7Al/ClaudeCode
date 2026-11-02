@@ -4553,7 +4553,7 @@ function paintInstruments(){
   if(!DATA_LOADED){
     if($("instr-count"))$("instr-count").innerHTML='<span class="muted">⏳ Data loading…</span>';
     if($("instr-viz"))$("instr-viz").innerHTML='';
-    if($("instr-rows"))$("instr-rows").innerHTML='<tr><td colspan="15" class="empty sqh-loading">⏳ Data loading…</td></tr>';
+    if($("instr-rows"))$("instr-rows").innerHTML='<tr><td colspan="16" class="empty sqh-loading">⏳ Data loading…</td></tr>';
     return;
   }
   const rows=DATA||[], q=(($("instr-search")||{}).value||"").trim().toLowerCase();
@@ -4587,12 +4587,13 @@ function paintInstruments(){
     <td>${ob(r.quality!=null?`<b style="color:${qcol(r.quality)}">${r.quality}</b>`:"")}</td>
     <td>${ob(INSTR_LASTTRIG[r.ticker]||"—")}</td>
     <td>${r.wk52_low!=null?f2(r.wk52_low):"—"}</td><td>${r.wk52_high!=null?f2(r.wk52_high):"—"}</td>
+    <td>${ob(r.price_now!=null?f2(r.price_now):"—")}</td>
     <td>${ob(r.rr!=null?(+r.rr).toFixed(1):"")}</td>
     <td>${ob(instrRvolCell(r))}</td>
     <td>${ob(_tickCross(r.current_above_vwap))}</td>
     <td>${ob(_tickCross(r.current_atr_expanding))}</td>
     <td>${ob(volScoreCell(r.volume_score))}</td>
-    <td><b>${disp(r.ticker)}</b></td></tr>`;}, 15, "No instruments match.");
+    <td><b>${disp(r.ticker)}</b></td></tr>`;}, 16, "No instruments match.");
   paintInstrFunnel();
 }
 document.querySelectorAll("th[data-instrk]").forEach(th=>th.onclick=e=>instrSort(th.dataset.instrk,e.shiftKey));

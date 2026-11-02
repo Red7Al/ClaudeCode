@@ -1998,6 +1998,11 @@ def api_records():
         # Now / P/E / Insider % / Broker for open setups today's scan does not carry -- built in Actions by
         # publish_report_summary.py (2026-10-10). No file for this snapshot: those cells stay blank.
         extras = _summary_section("report_extras", snap) or {}
+        # Price now (owner 2026-11-02, Instruments tab): the scan's own current_price where it has one, else the
+        # latest stored close (<= 7 days) from the summary -- the precedence report_extras already applies.
+        # Logged-in only, like the Scanner's Now. No file for this snapshot: only the instruments the scan priced
+        # (381 of 1,999 on 2026-11-02; with the file 1,985).
+        closes = _summary_section("latest_close", snap) or {}
         for r in snap.get("records", []):
             w = wk52.get(r.get("ticker")) or (None, None)
             current = live_metrics.get(r.get("ticker"), {})
@@ -2014,7 +2019,9 @@ def api_records():
                              trig_date=trigdates.get(r.get("ticker")),
                              current_metric_status=current.get("status", "not_calculated"),
                              current_metric_reason=current.get("reason"),
-                             wk52_low=w[0], wk52_high=w[1]))
+                             wk52_low=w[0], wk52_high=w[1],
+                             price_now=(r.get("current_price") if r.get("current_price") is not None
+                                        else closes.get(r.get("ticker")))))
             if setups_map is None:
                 if recs[-1].get("status") == "TRIGGERED":
                     recs[-1]["report_ok"] = False   # cannot be vetted -- hidden, never shown unfiltered

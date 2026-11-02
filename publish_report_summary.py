@@ -49,7 +49,12 @@ def build(snap: dict) -> dict:
     if sections["open_setups"] is None:
         raise RuntimeError("open trigger setups could not be read -- refusing to publish a summary without them")
     try:
-        sections["report_extras"] = report_extras(snap, sections["open_setups"])
+        sections["latest_close"] = latest_close_section(snap, sections["open_setups"])
+    except Exception as exc:       # optional, like report_extras: never costs the whole file
+        print(f"latest_close failed, published without it: {exc}")
+        sections["latest_close"] = None
+    try:
+        sections["report_extras"] = report_extras(snap, sections["open_setups"], sections["latest_close"])
     except Exception as exc:       # optional: a failure here must not cost the whole file (code review)
         print(f"report_extras failed, published without it: {exc}")
         sections["report_extras"] = {}
@@ -131,7 +136,37 @@ def write_squeeze_history_file(path: str) -> int:
     return len(sec["rows"])
 
 
-def report_extras(snap: dict, open_setups: dict) -> dict:
+def latest_close_section(snap: dict, open_setups: dict = None) -> dict:
+    """{ticker: close} -- the latest stored close, no older than 7 days, for EVERY snapshot instrument the scan
+    has no price for, plus every open setup whose instrument it has no price for (some are not in today's
+    snapshot at all). This is report_extras' "Now" (2026-10-10), widened from open setups to the whole universe
+    for the Instruments tab's Price now column (owner 2026-11-02: "please add price now before R:R"). One query,
+    one definition: report_extras takes its Now from this section, so the two cannot disagree. The web tier
+    shows the scan's own current_price where it has one and this close otherwise -- the same precedence the
+    Scanner Report applies to report_extras."""
+    priced = {r.get("ticker") for r in snap.get("records") or [] if r.get("current_price") is not None}
+    tickers = {r.get("ticker") for r in snap.get("records") or [] if r.get("ticker")}
+    tickers |= {t for t, v in (open_setups or {}).items() if v}
+    need = sorted(tickers - priced)
+    out = {}
+    if not need:
+        return out
+    from db_pool import get_db
+    db = get_db()
+    try:
+        # Only a close from the last 7 days counts as Now: an instrument whose prices stopped updating
+        # must show no Now rather than an old close presented as current (code review 2026-10-10).
+        for tk, close in db.run("select distinct on (ticker) ticker, close from price_history "
+                                "where ticker = any(:t) and close is not null "
+                                "and bar_date >= current_date - 7 "
+                                "order by ticker, bar_date desc", t=need) or []:
+            out[tk] = float(close)
+    finally:
+        db.close()
+    return out
+
+
+def report_extras(snap: dict, open_setups: dict, closes: dict = None) -> dict:
     """Now, P/E and Insider % for open setups the current scan does not carry (2026-10-10).
 
     Owner 2026-10-09: "Missing data in scanner for Now, Dist-Entry and other e.g. P/E". MEASURED: 32 of
@@ -151,18 +186,11 @@ def report_extras(snap: dict, open_setups: dict) -> dict:
     out = {t: {} for t in need}
     if not need:
         return out
-    from db_pool import get_db
-    db = get_db()
-    try:
-        # Only a close from the last 7 days counts as Now: an instrument whose prices stopped updating
-        # must show no Now rather than an old close presented as current (code review 2026-10-10).
-        for tk, close in db.run("select distinct on (ticker) ticker, close from price_history "
-                                "where ticker = any(:t) and close is not null "
-                                "and bar_date >= current_date - 7 "
-                                "order by ticker, bar_date desc", t=need) or []:
-            out[tk]["current_price"] = float(close)
-    finally:
-        db.close()
+    if closes is None:                     # called on its own (or latest_close failed): the same query
+        closes = latest_close_section(snap, open_setups)
+    for tk in need:
+        if closes.get(tk) is not None:
+            out[tk]["current_price"] = closes[tk]
     funds = (web_store.load_json_store("fundamentals_by_ticker") or {}).get("records") or {}
     for tk in need:
         kpis = (funds.get(tk) or {}).get("kpis") or {}

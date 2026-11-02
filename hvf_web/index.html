@@ -1742,7 +1742,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
 <div id="view-instruments" class="hidden doc" style="width:100%;max-width:none;margin-inline:0">
   <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap"><span class="grow"></span><button class="btn" onclick="renderInstruments()" title="Re-read the instrument universe from the server">↻ Refresh</button></div>
   <h1>Instruments</h1>
-  <p class="lede">The full universe we scan — search by name or ticker, filter by Location / Market / Sector / Status, and (once logged in) see Direction, Quality, R:R, RVOL, VWAP, ATR and VolumeScore. Click a name to open its full detail report.<span id="instr-loginhint" class="muted"> <a href="#" onclick="showLogin();return false">Log in</a> to see the trading signals and open a detail report.</span></p>
+  <p class="lede">The full universe we scan — search by name or ticker, filter by Location / Market / Sector / Status, and (once logged in) see Direction, Quality, Price now, R:R, RVOL, VWAP, ATR and VolumeScore. Click a name to open its full detail report.<span id="instr-loginhint" class="muted"> <a href="#" onclick="showLogin();return false">Log in</a> to see the trading signals and open a detail report.</span></p>
   <input type="hidden" id="inf_location"><input type="hidden" id="inf_market"><input type="hidden" id="inf_sector"><input type="hidden" id="inf_status"><input type="hidden" id="inf_direction">
   <div id="instr-viz" class="viz" style="border-bottom:none;padding:0 0 10px"></div>
   <section class="gsec" style="border-left-color:var(--accent)">
@@ -1758,6 +1758,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <th class="clk" data-instrk="last_trig" title="Date this instrument last triggered -- the newest trigger date in its Squeeze History, whatever its status today. — means no trigger recorded.">Last triggered</th>
         <th class="clk" data-instrk="wk52_low" title="Lowest close over the trailing 52 weeks">52wk Low</th>
         <th class="clk" data-instrk="wk52_high" title="Highest close over the trailing 52 weeks">52wk High</th>
+        <th class="clk" data-instrk="price_now" title="The scan's own price where it has one, otherwise the latest stored close (no older than 7 days). — means no recent price.">Price now</th>
         <th class="clk" data-instrk="rr">R:R</th>
         <th class="clk" data-instrk="rvol">RVOL</th>
         <th class="clk" data-instrk="above_vwap">VWAP</th>
@@ -1765,7 +1766,7 @@ input[type="date"]{color-scheme:dark;padding:6px 8px;border-radius:8px;font-fami
         <th class="clk" data-instrk="volume_score">Vol</th>
         <th class="clk" data-instrk="ticker">Ticker</th>
       </tr></thead>
-      <tbody id="instr-rows"><tr><td colspan="15" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
+      <tbody id="instr-rows"><tr><td colspan="16" class="empty sqh-loading">⏳ Data loading…</td></tr></tbody>
     </table></div>
   </section>
 
