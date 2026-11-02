@@ -208,12 +208,30 @@ set -euo pipefail
 DIR="$1"; SKIP_BACKUP="$2"
 cd "$DIR" || { echo "ERROR: no such directory: $DIR" >&2; exit 1; }
 if [ "$SKIP_BACKUP" != "1" ]; then
-  BACKUP=~/"backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+  # Into their own folder, newest 10 kept. Until 2026-11-02 every deploy wrote one into the home folder
+  # and none was ever removed (over 300 by then). Only files matching this exact pattern, in this folder,
+  # are ever removed; older backups still in the home folder are left alone.
+  BACKUP_DIR=~/backups/squeeze-scanner
+  BACKUP_KEEP=10
+  ( umask 077; mkdir -p "$BACKUP_DIR" )
+  BACKUP="$BACKUP_DIR/backup-$(date +%Y%m%d-%H%M%S).tar.gz"
   echo "  backing up current release -> $BACKUP"
   # The tarball contains .env and data/, so it must not be group/world readable. umask on this host
   # would otherwise leave it 644 under www-data.
   ( umask 077; tar czf "$BACKUP" --exclude=.venv_linux . 2>/dev/null ) || echo "  (backup reported warnings; continuing)"
   chmod 600 "$BACKUP" 2>/dev/null || true
+  # Exactly backup-YYYYMMDD-HHMMSS.tar.gz, nothing looser: "[0-9]*" would also match a hand-named
+  # backup-2019-0-pre-migration-KEEP.tar.gz. The names sort by date, so the oldest come first, and
+  # everything before the newest BACKUP_KEEP goes. An array, not a word-split string, so a space in a
+  # path cannot turn one name into several (both found by the independent tester, 2026-11-02).
+  D='[0-9]'
+  shopt -s nullglob
+  BACKUPS=( "$BACKUP_DIR"/backup-$D$D$D$D$D$D$D$D-$D$D$D$D$D$D.tar.gz )
+  shopt -u nullglob
+  for (( i = 0; i < ${#BACKUPS[@]} - BACKUP_KEEP; i++ )); do
+    rm -f -- "${BACKUPS[$i]}"
+    echo "  removed old backup ${BACKUPS[$i]}"
+  done
 fi
 # NEVER overwrite a snapshot the host already has. The package carries hvf_web/snapshot.json as a
 # last-known-good BOOT cache for a fresh install; on an upgrade it is actively harmful. It replaces
