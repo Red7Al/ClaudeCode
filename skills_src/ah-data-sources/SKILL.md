@@ -63,6 +63,14 @@ Two traps, both hit on 2026-09-20:
 
 ## 3. Resolution order for values that bite
 
+### Current price ("Now" on the Scanner Report, "Price now" on Instruments) -- 2026-11-02
+
+1. The record's `current_price` -- set by the scan only for instruments it priced (381 of 1,999 on 2026-11-02).
+2. Else the summary section `latest_close` (`publish_report_summary.latest_close_section`): the latest stored
+   close no older than 7 days, for every unpriced snapshot instrument and open setup (1,604 rows). `report_extras`
+   takes its Now from it; `/api/records` (logged in only) serves the result as `price_now`.
+3. Else nothing -- shown as "—" (14 on 2026-11-02). Never an older close presented as current.
+
 ### Company name — TWO independent paths, and they do not share a cache
 
 1. **The snapshot's `name`** — populated for 1,773 of 1,773. `build_snapshot.py` resolves it once in the

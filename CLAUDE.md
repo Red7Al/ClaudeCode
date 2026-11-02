@@ -50,6 +50,11 @@ speaking.** Every one had a single cheap command that would have prevented it.
   An architectural or standing rule goes into `CLAUDE.md`; what was decided and its state into
   `docs/STATUS.md`; the work into a `ChangeRequests/` line. Then commit, push and deploy in the same turn.
   Agent memory is per-machine and is never the only record of an owner decision.
+- **A change request's change carries its documentation change, automatically -- owner 2026-11-02** ("change in
+  requests is meant to automatically lead to change in documentation"). Part of the change, not a follow-up: before
+  marking an item `[Completed]`, grep every tracked `.md` file, skill and page copy for what the change alters (a
+  count, a market, a column, a rule) and update each in the same commit. Until that day only the instrument-count
+  case was written down (`ChangeRequests/20260724` P-03 -> `ah-web-formatting` "Universe-size copy").
 - **A complaint is sent to Anthropic as it is raised -- owner 2026-11-01** ("Complaint records must be submitted as
   they are raised"; chose "Send to Anthropic"). Record it in `ChangeRequests/` AND draft it with the feedback tool in
   the same turn (queued on his machine; he sends it with `/feedback`). The 12 complaints of 2026-09-28..10-31 were
