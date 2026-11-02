@@ -112,6 +112,9 @@ Each rule exists because skipping it produced a real defect in September 2026.
   bugs.
 - **`monkeypatch.setattr(module, "get_db", …)` does nothing** when the target does `from db_pool import
   get_db` inside the function. Patch `"db_pool.get_db"`.
+- **Owner 2026-11-02: "docker is not needed for end to end trading".** No test, job or tool in this project
+  may depend on Docker; shell code is tested by running it with plain `bash` (Git Bash locally, the
+  runner's bash in CI) against a temporary HOME.
 - `test_js_behaviour.py` EXECUTES client JavaScript in Node; `test_backtest_integrity.py` checks any replay
   before you quote its number.
 
