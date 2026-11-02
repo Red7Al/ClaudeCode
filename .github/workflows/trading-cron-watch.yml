@@ -1,4 +1,4 @@
-name: Cron Watch (scheduled-job failures — 2026-09-21)
+name: Cron Watch (job failures + account requests — 2026-11-02)
 
 # Tells somebody when a scheduled job fails, stops running, or recovers.
 #
@@ -52,6 +52,8 @@ jobs:
       APP_SECRET_KEY:       ${{ secrets.APP_SECRET_KEY }}
       GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
       RESEND_API_KEY:       ${{ secrets.RESEND_API_KEY }}
+      YAHOO_USER:           ${{ secrets.YAHOO_USER }}          # email fallback, same as every job (CLAUDE.md)
+      YAHOO_APP_PASSWORD:   ${{ secrets.YAHOO_APP_PASSWORD }}
       # BOTH OF THESE MUST COME FROM GITHUB SECRETS, NOT THE SUPABASE STORE, and the first run proved
       # why. db_pool decrypts app_secrets into the environment locally, but on a RUNNER that decrypt
       # fails -- "app_secrets: decrypt failed for CRONJOB_API_KEY" is in the 2026-09-21T14:32 log, one

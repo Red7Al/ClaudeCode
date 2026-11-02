@@ -6058,7 +6058,151 @@ def _insight_mcap_bands() -> dict:
     }
 
 
-_INSIGHT_BUILDERS = (_insight_direction_mix, _insight_mcap_bands)
+# Two insights that MOVE WITH THE DATA (owner 2026-11-02: "the insights tab is predictable now - same reports each
+# day - please add some better insights"). Both are rolling windows ending today, so the page changes as triggers
+# and outcomes arrive. Both read the bridge-eligible squeeze_history rows through _squeeze_history_raw -- the
+# summary/file first, the database only when those are behind the table (owner 2026-10-21, read files) -- so
+# neither adds a database reader. Row layout: 1 market, 8 return_pct, 9 triggered_date, 10 outcome_date.
+def _insight_rows():
+    from db_pool import get_db
+    from config import MAX_RISK_REWARD
+    db = get_db()
+    try:
+        return _squeeze_history_raw(db, MAX_RISK_REWARD) or []
+    finally:
+        db.close()
+
+
+def _insight_market_shift(rows=None, today=None) -> dict:
+    """Which market's share of triggers in the last 30 days is furthest from its share of the 12 months before.
+
+    Counted over a FIXED set of instruments: those that already triggered in the earlier 12 months. Without that,
+    a market whose list was widened (116 Nikkei names on 2026-10-18) shows a "shift" that is only new
+    instruments -- MEASURED 2026-11-02, Nikkei 6% -> 14% on all instruments."""
+    from statistics import NormalDist
+    rows = _insight_rows() if rows is None else rows
+    today = today or _dt.date.today()
+    cut, start = today - _dt.timedelta(days=30), today - _dt.timedelta(days=395)
+    live = [r for r in rows if r[9] is not None and start < r[9] and r[7] != "NEVER_TRIGGERED"]
+    known = {r[0] for r in live if r[9] <= cut}
+    recent, prior = {}, {}
+    for r in live:
+        if r[0] not in known:
+            continue
+        bucket = recent if r[9] > cut else prior
+        bucket[r[1] or "?"] = bucket.get(r[1] or "?", 0) + 1
+    n_r, n_p = sum(recent.values()), sum(prior.values())
+    if n_r < 20 or n_p < 100:
+        return {}
+    scored = []
+    for mkt in set(recent) | set(prior):
+        p0, p1 = prior.get(mkt, 0) / n_p, recent.get(mkt, 0) / n_r
+        if not 0 < p0 < 1 or p0 * n_r < 5:          # too small a market for the normal approximation
+            continue
+        scored.append((mkt, p1, p0, (p1 - p0) / math.sqrt(p0 * (1 - p0) / n_r)))
+    if not scored:
+        return {}
+    # The biggest of k movers is reported, so the bar is raised for k comparisons (Bonferroni, two-sided 5%):
+    # picking the largest of fifteen ordinary z-scores would clear 2 by chance most days.
+    k = len(scored)
+    need = NormalDist().inv_cdf(1 - 0.025 / k)
+    mkt, p1, p0, z = max(scored, key=lambda s: abs(s[3]))
+    word = "up" if p1 > p0 else "down"
+    return {
+        "id": "market_shift",
+        "title": "Where squeezes are firing now",
+        "headline": (f"{mkt}: {p1*100:.0f}% of the last 30 days' triggers, {word} from {p0*100:.0f}% "
+                     f"over the 12 months before"),
+        "stat": f"z = {abs(z):.1f} (needs {need:.1f} with {k} markets compared)",
+        "significant": abs(z) >= need,
+        "n": n_r,
+        "detail": (f"{recent.get(mkt, 0)} of {n_r} triggers in the last 30 days came from {mkt}; across the 12 "
+                   f"months before, {prior.get(mkt, 0):,} of {n_p:,}. Counted over the {len(known):,} instruments "
+                   f"that triggered in the earlier period, so instruments added since cannot create a shift. "
+                   f"The bars show every market's share of the last 30 days."),
+        "caveat": ("Bridge-eligible triggers only (ready, R:R 3 or more). A share can rise because the rest of the "
+                   "universe went quiet -- this measures where triggers are coming from, not whether they will pay."),
+        "chart": [{"label": m, "value": round(100.0 * c / n_r, 1)}
+                  for m, c in sorted(recent.items(), key=lambda x: -x[1])],
+        "chart_title": "% of the last 30 days' triggers, by market",
+    }
+
+
+_RESULTS_HORIZON = 60     # days every trade is given before it is judged, recent and earlier alike
+
+
+def _insight_recent_results(rows=None, today=None) -> dict:
+    """Recent triggers against the 12 months before, every trade judged on its FIRST 60 DAYS.
+
+    Equal follow-up is the whole point. Comparing trades by the date they CLOSED is biased: a stop is hit in days
+    and a target in weeks, so the trades that closed recently are mostly the quick losers -- MEASURED 2026-11-02,
+    "closed in the last 60 days" read 16% won against 28%, an artefact of that alone. Here a trade belongs to the
+    period it TRIGGERED in, and only what happened within 60 days of the trigger counts, so both periods are
+    measured the same way. The recent group is therefore the triggers of 60-120 days ago: the newest whose 60 days
+    are complete."""
+    rows = _insight_rows() if rows is None else rows
+    today = today or _dt.date.today()
+    h = _RESULTS_HORIZON
+    cut = today - _dt.timedelta(days=h)
+    start = today - _dt.timedelta(days=2 * h)
+    oldest = today - _dt.timedelta(days=2 * h + 365)
+    groups = {"recent": [], "prior": []}
+    months = {}
+    for r in rows:
+        td, od, ret = r[9], r[10], r[8]
+        if td is None or r[7] == "NEVER_TRIGGERED" or not (oldest < td <= cut):
+            continue
+        done = ret is not None and od is not None and (od - td).days <= h
+        item = float(ret) if done else None                    # None: still open after 60 days
+        groups["recent" if td > start else "prior"].append(item)
+        months.setdefault(td.strftime("%Y-%m"), []).append(item)
+
+    def score(items):
+        closed = [x for x in items if x is not None]
+        w, l = sum(1 for x in closed if x > 0), sum(1 for x in closed if x < 0)   # break-even is neither
+        return closed, w, w + l
+    rc, w1, d1 = score(groups["recent"])
+    pc, w2, d2 = score(groups["prior"])
+    if d1 < 10 or d2 < 50:
+        return {}
+    p1, p2, p = w1 / d1, w2 / d2, (w1 + w2) / (d1 + d2)
+    den = math.sqrt(p * (1 - p) * (1 / d1 + 1 / d2)) if 0 < p < 1 else 0
+    z = (p1 - p2) / den if den else 0.0
+    t = _drv_t(rc, pc)
+    m1, m2 = sum(rc) / len(rc), sum(pc) / len(pc)
+    agree = (p1 > p2) == (m1 > m2)
+    verdict = ("better" if p1 > p2 else "worse") if agree else "mixed: the two measures disagree"
+    chart = []
+    for m in sorted(months)[-13:]:
+        _, w, d = score(months[m])
+        if d:
+            chart.append({"label": m, "value": round(100.0 * w / d, 1), "n": len(months[m])})
+    n1 = len(groups["recent"])
+    return {
+        "id": "recent_results",
+        "title": "Is the method working lately",
+        "headline": (f"Triggers of 2-4 months ago won {p1*100:.0f}% within {h} days (average {m1:+.2f}%), "
+                     f"against {p2*100:.0f}% (average {m2:+.2f}%) for the 12 months before -- {verdict}"),
+        "stat": f"win rate z = {abs(z):.1f}, return t = {abs(t):.1f}",
+        "significant": agree and abs(z) >= 2 and abs(t) >= 2,
+        "n": n1,
+        "detail": (f"{n1} trades triggered {h}-{2 * h} days ago: {w1} closed positive and {d1 - w1} negative "
+                   f"within {h} days, {n1 - len(rc)} still open at day {h}. The 12 months before: "
+                   f"{len(groups['prior']):,} trades, {w2:,} won and {d2 - w2:,} lost within {h} days."),
+        "caveat": (f"Bridge-eligible triggers only (ready, R:R 3 or more), every one the scanner found, not only the "
+                   f"trades placed. A trade still open at day {h} counts in neither column. Win rate and return can "
+                   f"move in opposite directions in this population, so a difference is called significant only "
+                   f"when both agree and both clear 2."),
+        "chart": chart,
+        "chart_title": f"% won within {h} days, by month triggered",
+        "chart_kind": "time",
+        "baseline": round(p2 * 100, 1),
+        "baseline_label": "12-month rate",
+        "chart_unit": "%",
+    }
+
+
+_INSIGHT_BUILDERS = (_insight_direction_mix, _insight_mcap_bands, _insight_market_shift, _insight_recent_results)
 
 
 @app.route("/api/insights")

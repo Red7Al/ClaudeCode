@@ -288,6 +288,47 @@ def check(dry_run: bool = False, alert_ok: bool = False, stale_after_days: float
     return len(newly_failing) + len(newly_stale)
 
 
+# ── New account requests (owner 2026-11-02: "when requests in for a new user - I would like an email alert -
+# checking each day is fine"). Rides on this hourly job because it already emails and already remembers what it
+# has told -- the same "tell once, on change" rule as the failure alerts. Its own state key, so the job-status
+# document is never touched. A request is marked told ONLY after the email is accepted, so a failed send is
+# retried next hour; a request approved or rejected drops out of the told list, so a later re-request alerts
+# again. The requests themselves are web_users' pending list -- read through web_users, never re-derived.
+REQUESTS_KEY = "account_request_alerts"
+
+
+def check_account_requests(dry_run: bool = False) -> int:
+    """Email the owner about pending account requests not yet reported. Returns how many were new."""
+    import web_store
+    from hvf_web import web_users
+    pending = [r for r in web_users.list_requests() if r.get("name")]
+    told = set((web_store.load_json_store(REQUESTS_KEY) or {}).get("told") or [])
+    new = [r for r in pending if r["name"] not in told]
+    still = {r["name"] for r in pending} & told        # forget approved/rejected names
+    log.info("account requests: %d pending, %d new", len(pending), len(new))
+    if new and not dry_run:
+        lines = [f"- {r['name']} <{r.get('email', '')}> at {r.get('ts', '?')}"
+                 + (f" -- note: {r['note']}" if r.get("note") else "") for r in new]
+        body = ("New account request(s) on squeezescanner.cloud -- approve or reject in User Management:\n\n"
+                + "\n".join(lines)
+                + (f"\n\nAlso still waiting: {', '.join(sorted(still))}" if still else ""))
+        # The request form is PUBLIC and unauthenticated, so everything in it is a stranger's text: escaped for the
+        # HTML part (a note could otherwise carry a live link), and line breaks flattened out of the Subject (a
+        # CR/LF there is refused by the mail library, which would fail every send and retry it forever). Test
+        # specialist, 2026-11-02, both measured.
+        import html as _html
+        names = " ".join(", ".join(r["name"] for r in new).split())[:150]
+        from trade_email import send_simple_email
+        if not send_simple_email(subject=f"New account request: {names}", text=body,
+                                 html="<pre>" + _html.escape(body) + "</pre>"):
+            log.error("account request email was not sent; will retry next run")
+            return len(new)
+        still |= {r["name"] for r in new}
+    if not dry_run and still != told:
+        web_store.save_json_store(REQUESTS_KEY, {"built_at": time.time(), "told": sorted(still)})
+    return len(new)
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
     ap = argparse.ArgumentParser(description=__doc__)
@@ -298,6 +339,10 @@ def main() -> int:
                          "job (default: derive it from each job's own cron interval)")
     a = ap.parse_args()
     failing = check(dry_run=a.dry_run, alert_ok=a.alert_ok, stale_after_days=a.stale_after_days)
+    try:
+        check_account_requests(dry_run=a.dry_run)
+    except Exception as exc:          # never let the request alert cost the failure alerts
+        log.error("account request check failed: %s", exc)
     if failing:
         log.error("%d job(s) NEWLY failing or stale", failing)
     return 1 if failing else 0
