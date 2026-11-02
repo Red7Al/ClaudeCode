@@ -175,8 +175,10 @@ workflow file changes, put today's date in its `name:`.
 
 - **CHANGE FREEZE until Friday 2026-11-06 20:00 UK -- owner 2026-11-02** ("do all 3 and then that's plan for no more
   changes until Friday at 8pm!!!"). After the three agreed changes (new-user request email alert, 100 extra
-  instruments, better insights) nothing is committed, pushed or deployed until then. Watching the live checks and
-  reporting is allowed; a fault found in that time is recorded in `ChangeRequests/`, not fixed.
+  instruments, better insights) no product enhancement is committed, pushed or deployed until then. **Faults in live
+  trading ARE fixed during the freeze -- owner 2026-11-02: "faults in live trading should be fixed - product
+  enhancements can wait"** (with the usual specialist SHIP, clean suite and live proof). Any other fault found is
+  recorded in `ChangeRequests/`, not fixed.
 
 - **`WEB_BRIDGE` is the only enabled execution source.** Bridge changes are production trading changes.
 - **ONE trigger calculation, used by everything -- owner 2026-10-31: "never was more than one calculation needed".**
