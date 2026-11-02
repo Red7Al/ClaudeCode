@@ -1209,10 +1209,11 @@ def _publish_scanner_snapshot(all_results: dict) -> None:
         meta = publish_snapshot(snapshot, source="hvf-daily-report")
         verified = verify_current()
     except SnapshotStoreError as exc:
-        if "(402)" not in str(exc):
-            raise
-        # The scan itself and the report remain useful during the known Supabase Storage outage. The
-        # workflow sees this marker and must complete the IONOS publication before it can be green.
+        # ANY Storage refusal takes the IONOS fallback, not only the 402 of 2026-08-16 (owner 2026-11-02:
+        # "yes, agree"). On 2026-10-31 a 400 (bucket refused application/gzip) raised here and the Morning
+        # Chain skipped the report email, precompute, summary and HVF orders although the scan was complete.
+        # Nothing is hidden by this: the workflow sees this marker and must complete AND verify the IONOS
+        # publication before it can be green (trading-hvf-report.yml "Fail if HVF fallback ...").
         marker = os.path.join(os.path.dirname(__file__), "hvf_web", ".ionos-fallback-required")
         with open(marker, "w", encoding="utf-8") as fh:
             fh.write(str(exc))

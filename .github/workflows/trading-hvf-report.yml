@@ -1,4 +1,4 @@
-name: HVF Daily Report (2026-10-30)
+name: HVF Daily Report (2026-11-02)
 
 on:
   # Callable so trading-morning-chain.yml can run it in sequence (2026-09-05). The chain
@@ -153,7 +153,8 @@ jobs:
           X_ACCESS_SECRET:       ${{ secrets.X_ACCESS_SECRET }}
 
       # run_hvf_report preserves the completed candidate and writes .ionos-fallback-required when the
-      # known Supabase Storage HTTP 402 occurs; install it directly on IONOS before declaring the report run
+      # Supabase Storage refuses the upload (any refusal since 2026-11-02, was 402 only); install it directly
+      # on IONOS before declaring the report run
       # healthy. (Until 2026-10-21 it was also uploaded as the `hvf-daily-scanner-snapshot` GitHub artifact;
       # the repository is PUBLIC and is for code, not reports -- owner 2026-10-21.)
       - name: Publish HVF snapshot to IONOS fallback
