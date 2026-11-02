@@ -3,6 +3,8 @@
 **Update this file at the end of every session** instead of writing a new handover. Every figure carries
 the command that produced it or says it is unproven. Last updated **2026-10-20 (pushed 548b6cc)**.
 
+**CHANGE FREEZE until Fri 2026-11-06 20:00 UK (owner 2026-11-02)** after three changes: new-user request email alert, 100 extra instruments, better insights. See `CLAUDE.md` Constraints.
+
 Earlier handovers are in `docs/archive/HANDOVER-*.md`; everything still open from them is below.
 
 ---
