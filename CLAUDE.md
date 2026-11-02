@@ -156,6 +156,9 @@ workflow file changes, put today's date in its `name:`.
 
 - **Never delete a ChangeRequests file -- owner 2026-11-01: "do not delete the files !!"** A consolidated
   register (`20261101.txt`, every open item copied verbatim) does not make the earlier files disposable.
+- **Owner 2026-11-02: the 155 items carried into `20261101.txt` wait for his review; anything the agent ADDS
+  to the file after that is a new item the agent manages without his review** ("If you add anything to the
+  change request file - that can be managed by you without review from me as it is a new item").
 - Mark an item `[In Progress]` the moment you pick it up, `[Completed]` only when verified. Never batch.
 - The marker must be the **last token** on the line — `_CR_TAIL` is end-anchored; anywhere else reads as
   Not Started. Validate with `hvf_web.server._cr_status`, never a substring check.
