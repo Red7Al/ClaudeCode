@@ -5,6 +5,8 @@ the command that produced it or says it is unproven. Last updated **2026-10-20 (
 
 **CHANGE FREEZE until Fri 2026-11-06 20:00 UK (owner 2026-11-02)** after three changes: new-user request email alert, 100 extra instruments, better insights. Faults in live trading are still fixed (owner: "faults in live trading should be fixed - product enhancements can wait"). See `CLAUDE.md` Constraints.
 
+**Freeze ended 2026-11-06 20:00 UK. The 155 items in `ChangeRequests/20261101.txt` are held for the owner's review a further 48 hours, to Sun 2026-11-08 20:07 UK (owner 2026-11-06: "wait 48 more hours for the review").**
+
 Earlier handovers are in `docs/archive/HANDOVER-*.md`; everything still open from them is below.
 
 ---
