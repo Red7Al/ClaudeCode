@@ -7,6 +7,18 @@ the command that produced it or says it is unproven. Last updated **2026-10-20 (
 
 **Freeze ended 2026-11-06 20:00 UK. The 155 items in `ChangeRequests/20261101.txt` are held for the owner's review a further 48 hours, to Sun 2026-11-08 20:07 UK (owner 2026-11-06: "wait 48 more hours for the review").**
 
+## 0. IN PROGRESS 2026-11-06 -- nightly "wrong-instrument" email (owner: "please resolve them yourself")
+
+| Fact | Proof |
+|---|---|
+| The email is the Data Quality Audit, 22:15 UTC: 104, 108 or 208 findings a night. Full figure 200 + 8 pins; the 96-100 nights end short, cause unproven (the sweep hid Yahoo failures; it now logs the no-name count). | Runs 41923653003, 42119930006 |
+| Of the 200: 148 are outside the universe (147 also social-feed picks; 0 ever in `working_orders`), 52 scanned. 4 of the 200 came from the 10-18 addition `15e3346`. Mismatches were already 93-227 a night on 10-13..10-16, before it. | `run_hvf_report.UNIVERSE`, `notable_investors`, run logs |
+| The sweep read Yahoo `shortName`; `get_epic` reads `longName` first. Over all 2,311 rows, 0 Yahoo errors: sweep 200 flagged (52 scanned), `get_epic`'s name 151 (2 scanned, both pinned). | scratchpad sweep, 2026-11-06 |
+| **Open risk:** name-passing wrong codes -- `BZ=F`, `7532.T`, `LLC.AX`, `BWZ`, `^MXX`, `SPIP` -- pass `get_epic`; its price check runs only on first caching. 0 orders ever on these six. Not yet confirmed against IG's price. | `working_orders`; IG check of 1,282 scanned codes runs from 23:45 UTC |
+| Changed: sweep uses `_yahoo_name`; email only for a finding on a live order or position; absurd outcomes no longer emailed. | `test_dqa_findings_email.py` |
+| Absurd outcomes: 473 of 9,410 records in 400 days -- 472 stop < 0.5% from entry, 27 R:R > 100, 0 impossible returns or geometry. 3 filled orders within a day on those tickers, loose join, unchecked. | `_absurd_outcomes()` read-only |
+| P-02 (100 extra instruments) still `[In Progress]`: universe measures 1,999. | `run_hvf_report.UNIVERSE` |
+
 Earlier handovers are in `docs/archive/HANDOVER-*.md`; everything still open from them is below.
 
 ---

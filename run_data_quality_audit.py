@@ -22,8 +22,8 @@
 #
 # Output: rows upserted to data_quality_log; Slack summary in WEIGHT order (CRITICAL mismatches first, then by
 # phantom-wick count) — CRITICAL findings go to #alerts, otherwise a digest goes to #signals. Slack is not used
-# (owner 2026-10-08), so since 2026-10-27 the wrong-instrument findings (identity, price, pin) and new absurd
-# outcomes are also EMAILED (_email_findings).
+# (owner 2026-10-08). Findings stay in data_quality_log and the run log for the agent to resolve; since 2026-11-06 only a
+# wrong-instrument finding on a live order or position is EMAILED (_email_findings; owner: "resolve them yourself").
 #
 # Usage:
 #   python run_data_quality_audit.py            # auto batch size from allowance
@@ -276,11 +276,12 @@ def _identity_sweep_all_cached() -> list:
     left US/AU tickers unguarded and the wrong-company class recurred within
     hours). Every cached equity epic, every night: the IG instrument name must
     share a significant word with the Yahoo company name. Costs ZERO IG
-    allowance — name comparisons only. Mismatches are CRITICAL (wrong company).
+    allowance — name comparisons only. Mismatches are CRITICAL (wrong company). The Yahoo name is get_epic's own
+    (_yahoo_name, long name first): the sweep read shortName, so of 2,311 rows on 2026-11-06 it flagged 52 scanned
+    instruments where get_epic flagged 2 ('BEN ADE BK FPO [BEN]' for Bendigo and Adelaide Bank).
     """
-    import yfinance as yf
     from db_pool import get_db
-    from ig_shim import instrument_names_match
+    from ig_shim import instrument_names_match, _yahoo_name
 
     db = get_db()
     try:
@@ -288,12 +289,10 @@ def _identity_sweep_all_cached() -> list:
                         "where epic like '%.D.%' and description is not null")
     finally:
         db.close()
-    findings = []
+    findings, unnamed = [], 0
     for t, e, d in cached:
-        try:
-            y = (yf.Ticker(t).info or {}).get("shortName") or ""
-        except Exception:
-            continue   # FX/index/commodity tickers have no Yahoo equity name
+        y = _yahoo_name(t)   # '' for FX/index/commodity tickers, and whenever Yahoo does not answer
+        unnamed += not y
         if y and not instrument_names_match(t, d, y):
             findings.append({"ticker": t, "days_compared": 0, "close_max_dev_pct": None,
                              "phantom_high_wicks": 0, "phantom_low_wicks": 0,
@@ -301,7 +300,7 @@ def _identity_sweep_all_cached() -> list:
                              "detail": f"epic {e} is '{d}' but Yahoo says {t} is '{y}' — "
                                        f"WRONG COMPANY mapped"})
             log.error(f"Identity sweep: {t} → {e} ('{d}') vs Yahoo '{y}' — MISMATCH")
-    log.info(f"Identity sweep: {len(cached)} cached epics checked, {len(findings)} mismatches")
+    log.info(f"Identity sweep: {len(cached)} cached epics, {unnamed} with no Yahoo name, {len(findings)} mismatches")
     return findings
 
 
@@ -436,12 +435,27 @@ def _absurd_outcomes(days: int = 400) -> list:
 _EMAILED_VERDICTS = ("PIN_MISMATCH", "IDENTITY_MISMATCH", "CRITICAL_MISMATCH")
 
 
-def _email_findings(rows: list, fresh: list, backlog: int, window_days: int) -> bool:
-    """The audit's critical findings and new absurd outcomes, by EMAIL (2026-10-27). Alerts go by email; Slack is not
-    used (owner 2026-10-08) and both Slack posters return early, so nobody had received a finding: the 10-26 run
-    flagged 94 wrong-company codes (AAL on Alfabs Australia, DJT on the Dow). Nothing to report, nothing sent."""
+def _live_tickers() -> set:
+    """Tickers with a live working order or a tracked open position."""
+    from db_pool import get_db
+    db = get_db()
+    try:
+        rows = db.run("select ticker from working_orders where status in ('PENDING','WATCHING') "
+                      "union select ticker from positions") or []
+    finally:
+        db.close()
+    return {r[0] for r in rows}
+
+
+def _email_findings(rows: list) -> bool:
+    """Email only a wrong-instrument finding on a live order or position -- owner 2026-11-06: "I am still getting email
+    each night about 100's of instruments - please resolve them yourself - I do not plan to pick these up". Every other
+    finding stays in data_quality_log and the run log for the agent. Nothing to report, nothing sent."""
     critical = [r for r in rows if r.get("verdict") in _EMAILED_VERDICTS]
-    if not critical and not fresh:
+    if critical:
+        live = _live_tickers()
+        critical = [r for r in critical if r["ticker"] in live]
+    if not critical:
         return False
     lines = []
     for v in _EMAILED_VERDICTS:
@@ -450,11 +464,7 @@ def _email_findings(rows: list, fresh: list, backlog: int, window_days: int) -> 
             lines.append(f"{v} -- {len(hits)}")
             lines += [f"  {r['ticker']}: {r.get('detail') or ''}" for r in hits]
             lines.append("")
-    if fresh:
-        lines.append(f"ABSURD OUTCOMES -- {len(fresh)} new in {window_days} days ({backlog} in 400 days)")
-        lines += [f"  {r['ticker']} {r['triggered_date']} {r['outcome']}: {', '.join(r['faults'])}" for r in fresh]
-    subject = (f"Data Quality Audit: {len(critical)} wrong-instrument finding(s)"
-               + (f", {len(fresh)} new absurd outcome(s)" if fresh else ""))
+    subject = f"Data Quality Audit: {len(critical)} wrong-instrument finding(s) on a live order or position"
     from trade_email import send_simple_email
     sent = send_simple_email(subject=subject, text="\n".join(lines))
     log.info(f"Audit findings email {'sent' if sent else 'FAILED'}: {subject}")
@@ -854,7 +864,7 @@ def main():
         log.info("Absurd outcomes: none")
     if fresh:
         _post_absurd_slack(fresh, len(bad), _WINDOW_DAYS)
-    _email_findings(rows, fresh, len(bad), _WINDOW_DAYS)
+    _email_findings(rows)
 
     log.info(f"Audit complete: {len(rows)} tickers, allowance remaining {remaining}")
     try:   # record this run in the web app's Batch Activity (user 2026-08-11, P-12)
