@@ -18,6 +18,7 @@ the command that produced it or says it is unproven. Last updated **2026-10-20 (
 | Changed: sweep uses `_yahoo_name`; email only for a finding on a live order or position; absurd outcomes no longer emailed. | `test_dqa_findings_email.py` |
 | Absurd outcomes: 473 of 9,410 records in 400 days -- 472 stop < 0.5% from entry, 27 R:R > 100, 0 impossible returns or geometry. 3 filled orders within a day on those tickers, loose join, unchecked. | `_absurd_outcomes()` read-only |
 | P-02 (100 extra instruments) still `[In Progress]`: universe measures 1,999. | `run_hvf_report.UNIVERSE` |
+| **Owner 2026-11-06 (complaint): "testing must improve !!"** The 10-27 email was verified only as SENT; nothing checked its findings were true. Rule: before any alert reaches the owner, run it on real data, read the output, measure how many findings are true, and add a real-row regression fixture. Standing rule in `CLAUDE.md` Constraints. | `ChangeRequests/20261101.txt` |
 
 Earlier handovers are in `docs/archive/HANDOVER-*.md`; everything still open from them is below.
 

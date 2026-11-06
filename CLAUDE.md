@@ -201,6 +201,16 @@ workflow file changes, put today's date in its `name:`.
 - **AUS Open, UK Open and US Open stay DISABLED on cron-job.org — owner decision, settled 2026-10-08.**
   Last runs 2026-08-06. Do not re-enable them, do not "fix" anything that reports them missing, and do not
   raise them again. Session Watchdog skips any session whose cron-job.org job is disabled.
+- **The agent resolves data-quality findings; they do not go to the owner -- owner 2026-11-06** ("I am still getting
+  email each night about 100's of instruments - please resolve them yourself - I do not plan to pick these up"). The
+  Data Quality Audit emails only a wrong-instrument finding on a live order or position; the rest stay in
+  `data_quality_log` and the run log for the agent. His "resolve them yourself" is also the approval to change those
+  `epic_lookup` rows, removed rows kept in `epic_lookup_removed`.
+- **An alert is tested on whether it is true, not whether it was sent -- owner 2026-11-06** ("insufficient testing that
+  hit me with conerning alerts - testing must improve !!"). Before any alert reaches the owner, run it on real data,
+  read the output, measure how many findings are true, and add a real-row regression test. "Email sent" in a log
+  verifies delivery only: the 10-27 audit email was marked verified that way, and 50 of its 52 scanned findings pass
+  `get_epic`'s own name check.
 - **Alerts go by EMAIL. Slack is no longer used** (owner, 2026-10-08). An alert that only posts to a
   `SLACK_*` webhook reaches nobody. `run_cron_watch._notify` emails. **Every job emails the same way** (owner
   2026-10-27: "use the same method"): the workflow passes `RESEND_API_KEY`, `YAHOO_USER`, `YAHOO_APP_PASSWORD`, and
