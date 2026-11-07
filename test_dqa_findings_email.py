@@ -277,6 +277,72 @@ def test_an_absurd_outcome_stays_out_of_the_email_and_in_the_run_log(monkeypatch
     assert "Absurd outcomes: 1 new" in caplog.text and "AGL.AX" in caplog.text
 
 
+def test_a_failed_live_read_costs_the_email_and_nothing_else(monkeypatch, caplog):
+    """A database error here killed the run on b67e2f1: no Batch Activity, no 'Audit complete'. Findings are already
+    saved by this point and the error goes to the run log, as the pin and absurd sweeps do."""
+    import web_store
+    batches = []
+    monkeypatch.setattr(web_store, "append_batch", lambda *a, **k: batches.append(a))
+    def refused():
+        raise RuntimeError("pool full")
+    monkeypatch.setattr(dqa, "_live_tickers", refused)
+    with caplog.at_level("INFO", logger=dqa.log.name):
+        assert _run_main(monkeypatch, [AAL], [SPCX_ROW]) == []
+    assert "not checked against live orders: pool full" in caplog.text and "Audit complete" in caplog.text
+    assert len(batches) == 1 and "Data quality audit" in batches[0][1]
+
+
+def _audit(monkeypatch, row):
+    """_audit_ticker up to the IG price read, on a real row. Returns the row and whether the prices were asked for."""
+    import pandas
+    asked = []
+    monkeypatch.setattr(ig_shim, "get_epic", lambda t: row[1])
+    monkeypatch.setattr(ig_shim, "get_prices_df", lambda *a, **k: asked.append(a) or (pandas.DataFrame(), 9000))
+    return dqa._audit_ticker(row[0]), asked
+
+
+def _described(monkeypatch, row):
+    monkeypatch.setattr("db_pool.get_db", lambda: type("D", (), {
+        "run": lambda s, q, **k: [[row[2]]] if k.get("e") == row[1] else [], "close": lambda s: None})())
+
+
+def test_the_price_audit_passes_a_right_row_its_old_check_failed(monkeypatch):
+    """HGT.L: the one London row of 324 the old shortName check failed ('HG CAPITAL TRUST PLC ORD 2.5P'), which also
+    cost it the price comparison."""
+    row = next(r for r in RIGHT_ROWS if r[0] == "HGT.L")
+    _yahoo_answers(monkeypatch, [row])
+    _described(monkeypatch, row)
+    found, asked = _audit(monkeypatch, row)
+    assert found["verdict"] == "NO_IG_DATA" and len(asked) == 1
+
+
+def test_the_price_audit_still_stops_on_the_wrong_instrument(monkeypatch):
+    row = WRONG_ROWS[0]
+    _yahoo_answers(monkeypatch, [row])
+    _described(monkeypatch, row)
+    found, asked = _audit(monkeypatch, row)
+    assert found["verdict"] == "IDENTITY_MISMATCH" and "Morningstar" in found["detail"] and asked == []
+
+
+def test_a_failed_identity_check_skips_only_the_identity_check(monkeypatch):
+    row = WRONG_ROWS[0]
+    def refused():
+        raise RuntimeError("pool full")
+    _yahoo_answers(monkeypatch, [row])
+    monkeypatch.setattr("db_pool.get_db", refused)
+    found, asked = _audit(monkeypatch, row)
+    assert found["verdict"] == "NO_IG_DATA" and len(asked) == 1
+
+
+def test_a_row_yahoo_cannot_name_goes_on_to_the_price_check(monkeypatch):
+    row = WRONG_ROWS[0]
+    monkeypatch.setattr("ig_shim._yahoo_name", lambda t: "")
+    _described(monkeypatch, row)
+    monkeypatch.setitem(sys.modules, "yfinance", type(sys)("yfinance"))
+    found, asked = _audit(monkeypatch, row)
+    assert found["verdict"] == "NO_IG_DATA" and len(asked) == 1
+
+
 def test_the_audit_workflow_carries_an_email_sender():
     """Without these the job logs "No email sender configured" and the email is skipped -- as the Closing Window's IG
     pause emails were on 2026-10-27 (runs 40491593154, 40506969984)."""
