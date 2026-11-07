@@ -111,9 +111,9 @@ def _audit_ticker(ticker: str) -> dict:
     # ── Identity reconciliation (recon register #4): the IG instrument NAME
     # must match the Yahoo company name for this ticker — catches the
     # LAND→Gladstone Land class (wrong company mapped) continuously, not just
-    # at lookup time. Word-overlap check: at least one significant word of one
-    # name must appear in the other.
+    # at lookup time. The same name and the same match as get_epic (2026-11-06).
     try:
+        from ig_shim import instrument_names_match, _yahoo_name
         from db_pool import get_db as _gdb
         _db = _gdb()
         try:
@@ -121,17 +121,12 @@ def _audit_ticker(ticker: str) -> dict:
         finally:
             _db.close()
         ig_name = (_r[0][0] or "") if _r else ""
-        y_name  = (yf.Ticker(ticker).info or {}).get("shortName") or ""
-        if ig_name and y_name:
-            _stop  = {"plc", "the", "inc", "corp", "corporation", "group", "ltd",
-                      "limited", "holdings", "trust", "ord", "and", "of", "co"}
-            ig_w = {w for w in ig_name.lower().replace(".", " ").split() if w not in _stop and len(w) > 2}
-            y_w  = {w for w in y_name.lower().replace(".", " ").split() if w not in _stop and len(w) > 2}
-            if ig_w and y_w and not (ig_w & y_w):
-                row["verdict"] = "IDENTITY_MISMATCH"
-                row["detail"]  = (f"IG instrument '{ig_name}' vs Yahoo company '{y_name}' share no "
-                                  f"significant words — epic {epic} may map to the WRONG COMPANY")
-                return row
+        y_name  = _yahoo_name(ticker)
+        if ig_name and y_name and not instrument_names_match(ticker, ig_name, y_name):
+            row["verdict"] = "IDENTITY_MISMATCH"
+            row["detail"]  = (f"IG instrument '{ig_name}' vs Yahoo company '{y_name}' share no "
+                              f"significant words — epic {epic} may map to the WRONG COMPANY")
+            return row
     except Exception as e:
         log.debug(f"{ticker}: identity check skipped ({e})")
 
@@ -450,10 +445,15 @@ def _live_tickers() -> set:
 def _email_findings(rows: list) -> bool:
     """Email only a wrong-instrument finding on a live order or position -- owner 2026-11-06: "I am still getting email
     each night about 100's of instruments - please resolve them yourself - I do not plan to pick these up". Every other
-    finding stays in data_quality_log and the run log for the agent. Nothing to report, nothing sent."""
+    finding stays in data_quality_log and the run log for the agent. Nothing to report, nothing sent. If the live set
+    cannot be read the run carries on, like the pin and absurd sweeps: the error is logged for the agent, not emailed."""
     critical = [r for r in rows if r.get("verdict") in _EMAILED_VERDICTS]
     if critical:
-        live = _live_tickers()
+        try:
+            live = _live_tickers()
+        except Exception as e:
+            log.error(f"{len(critical)} finding(s) not checked against live orders: {e}")
+            return False
         critical = [r for r in critical if r["ticker"] in live]
     if not critical:
         return False
@@ -846,7 +846,7 @@ def main():
         _post_slack(rows, remaining)
 
     # Absurd-outcome sweep — no IG allowance, so it runs even when the price batch stopped early.
-    # Alert on what is NEW. The backlog is ~1,800 rows and re-listing it nightly would be noise that
+    # Log what is NEW (no longer emailed, 2026-11-06). The backlog is ~1,800 rows; re-listing it nightly would be noise that
     # trains everyone to ignore the channel; it is carried as a single number so a rising trend is still
     # visible. Roughly 1-2 genuinely new rows appear per day, which is an alert worth reading.
     import datetime as _dt
