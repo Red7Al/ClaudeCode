@@ -79,8 +79,9 @@ def test_both_paths_use_one_rule():
 
 def test_a_partial_refresh_counts_only_what_it_owns():
     """NASDAQ 100 is listed before S&P 500, so it owns the 83 shared names."""
-    assert _distinct({"NASDAQ 100"}) == 94
+    assert _distinct({"NASDAQ 100"}) == 104          # +10 NASDAQ-100 names, owner 2026-11-02 P-02 (was 94)
     assert _distinct({"S&P 500"}) == 422, "S&P 500 keeps 505 minus the 83 NASDAQ 100 already owns"
+    assert _distinct({"S&P MidCap 400"}) == 88, "the new market shares no name with any other"
 
 
 def test_the_old_total_was_unreachable():
@@ -88,6 +89,6 @@ def test_the_old_total_was_unreachable():
     old_total = sum(len(t) for t in UNIVERSE.values())
     actually_scanned = _distinct()
 
-    assert old_total == 2082        # +226 Nikkei / ASX / Hang Seng names, owner 2026-10-18 (was 1,856)
-    assert actually_scanned == 1999  # was 1,773
+    assert old_total == 2180        # +98 NASDAQ-100 / S&P MidCap 400 names, owner 2026-11-02 P-02 (was 2,082)
+    assert actually_scanned == 2097  # was 1,999
     assert actually_scanned < old_total, "the reconstruction must be unreachable, or this proves nothing"

@@ -283,6 +283,27 @@ NASDAQ100 = [
     "DDOG", "IDXX", "DXCM", "TTWO", "CCEP", "ANSS", "ON", "CDW", "BIIB", "ZS",
     "GFS", "MDB", "ARM", "WBD", "APP", "MSTR", "PLTR", "LIN", "PYPL", "LULU",
     "FANG", "AXON", "PDD", "TEAM",
+    # Current NASDAQ-100 constituents not yet listed (owner 2026-11-02, P-02: "another 100 instruments from markets
+    # already being actively used by Alex"). Source: api.nasdaq.com nasdaq100 list, 2026-11-06 (101 names). Each
+    # Yahoo EQUITY in USD with live prices, and an IG epic whose IG name AND price match (2026-11-08); SPCX is the
+    # owner-verified pin in ig_shim._EPIC_VERIFIED_OVERRIDES (10).
+    "ASML", "ALNY", "NBIS", "SHOP", "RKLB", "TRI", "FER", "ALAB", "CRWV", "SPCX",
+]
+
+# S&P MidCap 400, largest first (owner 2026-11-02, P-02: "yes" to the largest S&P MidCap 400 companies as a new
+# market, Location US, to make 100 with the NASDAQ-100 names above). Source: en.wikipedia.org/wiki/List_of_S&P_400
+# _companies constituents table, ranked by Yahoo market cap on 2026-11-08 (smallest here PEN, GBP 9.35bn; Alex's floor is
+# GBP 485m). Each Yahoo EQUITY in USD with live prices and an IG epic whose IG name AND price match the Yahoo name
+# and last close; H (Hyatt) and WTRG had no IG epic and are left out (88).
+MIDCAP400 = [
+    "SN", "ROIV", "FTI", "UTHR", "ROKU", "ATI", "USFD", "THC", "RGLD", "RS", "VNOM", "XPO",
+    "TOST", "ENTG", "WWD", "CNH", "ITT", "MEDP", "PR", "EWBC", "SNX", "RBA", "APG", "NVT",
+    "RGA", "EXEL", "PFGC", "JLL", "CW", "NBIX", "DINO", "WMG", "OVV", "MTSI", "NXT", "NTNX",
+    "ULS", "LAMR", "CDE", "BURL", "TRU", "OHI", "PNFP", "JAZZ", "RBC", "CLH", "WPC", "CRBG",
+    "LSCC", "SUI", "LECO", "SGI", "NLY", "TLN", "MANH", "CSL", "DOCU", "WCC", "TOL", "EQH",
+    "CG", "RNR", "MTZ", "PAG", "ARMK", "COKE", "BJ", "CRS", "CART", "CACI", "BSY", "EHC",
+    "AHR", "AMH", "BTSG", "GWRE", "GKOS", "FIVE", "RPM", "CCK", "MKSI", "ELAN", "AFG", "GME",
+    "WSO", "ELS", "SITM", "PEN",
 ]
 
 COMMODITIES = [
@@ -581,6 +602,7 @@ UNIVERSE = {
     "FTSE 250":     FTSE250,
     "NASDAQ 100":   NASDAQ100,       # listed before S&P 500 so dual-listed mega-caps file under NASDAQ
     "S&P 500":      SP500,
+    "S&P MidCap 400": MIDCAP400,    # largest S&P MidCap 400 equities; Location US (owner 2026-11-02, P-02)
     "DAX":          GERMANY,        # DAX 40 + MDAX equities; Location "Germany" (user 2026-07-06)
     "Euronext":     EURONEXT,       # top 100 pan-European Euronext equities; Location "Europe" (user 2026-07-14)
     "SSE (Shanghai)": SHANGHAI,     # Shanghai Stock Exchange equities; Location China (user 2026-07-06)
@@ -976,7 +998,7 @@ def build_slack_blocks(tradeable, developing, scan_time: str, per_market_n: int 
         "text": {"type": "mrkdwn",
                  "text": (f"*{len(tradeable)} tradeable* (READY/TRIGGERED ≥{HVF_MIN_RR}:1 R:R)  |  "
                           f"*{len(developing)} developing* (valid pattern, R:R < {HVF_MIN_RR}:1)\n"
-                          f"Scanned: FTSE 100 · FTSE 250 · NASDAQ 100 · S&P 500 · DAX · SSE (Shanghai) · Hong Kong · Nikkei 225 · ASX · NSE (India) · Commodities · Indices · FX · Crypto")}
+                          f"Scanned: FTSE 100 · FTSE 250 · NASDAQ 100 · S&P 500 · S&P MidCap 400 · DAX · SSE (Shanghai) · Hong Kong · Nikkei 225 · ASX · NSE (India) · Commodities · Indices · FX · Crypto")}
     })
     blocks.append({"type": "divider"})
 
