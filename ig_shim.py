@@ -1456,7 +1456,13 @@ def get_epic(ticker: str) -> Optional[str]:
             if _term != normalized:
                 log.info(f"{ticker}: found via alias search term '{_term}'")
             break
-    if not markets:
+    # A ticker search that finds NOTHING still goes on to the company-name search below when Yahoo has a name
+    # (2026-11-08). It used to return here, so the name fallback never ran for the case it was written for: IG does
+    # not index Tokyo codes ('5233.T' finds nothing; 'taiheiyo cement' finds AJ.D.5233JT.DAILY.IP at the stored
+    # close). MEASURED that day: 77 of 228 Nikkei tickers had no epic_lookup row; 5233.T and 7211.T passed every
+    # limit on 2026-11-06 and got no order.
+    ticker_found = bool(markets)
+    if not markets and not y_name:
         log.warning(f"No IG market found for ticker: {ticker} (tried {_terms})")
         return None
 
@@ -1477,6 +1483,8 @@ def get_epic(ticker: str) -> Optional[str]:
         s = 0
         if mid == normalized.replace(".", "").replace("-", ""):
             s += 4                      # exact ticker in epic body
+        elif ticker.endswith(".T") and mid == ticker[:-2] + "JT":
+            s += 4                      # exact Tokyo code: 5233.T is AJ.D.5233JT (IG, 2026-11-08)
         elif mid == normalized.replace(".", "").replace("-", "") + "US":
             s += 2 if not is_uk else -8 # US listing of the same ticker
         if m.get("expiry") == "DFB":
@@ -1485,7 +1493,7 @@ def get_epic(ticker: str) -> Optional[str]:
             s += 8                      # UK share family
         return s
 
-    best = max(markets, key=_epic_score)
+    best = max(markets, key=_epic_score) if markets else {}
 
     # ── Identity verification (ASX 2026-06-12: ticker 'ASX' = ASE Technology
     # on Yahoo but the search's best score was ASX Ltd, the Australian
@@ -1527,6 +1535,10 @@ def get_epic(ticker: str) -> Optional[str]:
                     best = max(name_match, key=_epic_score)
                     log.info(f"get_epic {ticker}: resolved via company-name search '{name_term}' → "
                              f"{best.get('epic')} ({best.get('instrumentName')})")
+                elif not ticker_found and not name_markets:
+                    # Neither search found anything: IG does not list it. Logged, not emailed -- as before.
+                    log.warning(f"No IG market found for ticker: {ticker} (tried {_terms} and name '{name_term}')")
+                    return None
                 else:
                     try:
                         from notify import alert_system_error
@@ -1535,7 +1547,8 @@ def get_epic(ticker: str) -> Optional[str]:
                                            f"company's name (by ticker OR by name) — wrong-instrument "
                                            f"risk, NOT cached, instrument skipped.",
                                            detail=str([(m.get('epic'), m.get('instrumentName'))
-                                                       for m in markets[:6]]))
+                                                       for m in (markets or name_markets)[:6]]),
+                                           email=ticker_found)   # the name-only path refuses quietly (owner 11-06)
                     except Exception:
                         pass
                     log.error(f"get_epic {ticker}: no candidate matches Yahoo name '{y_name}' "
@@ -1559,7 +1572,8 @@ def get_epic(ticker: str) -> Optional[str]:
                                    f"{ticker}: no IG search result trades near its last close {close} -- "
                                    f"wrong-instrument risk, NOT cached, instrument skipped.",
                                    detail=str([(m.get('epic'), m.get('instrumentName'), m.get('bid'))
-                                               for m in markets[:6]]))
+                                               for m in markets[:6]]),
+                                   email=ticker_found)   # the name-only path refuses quietly (owner 11-06)
             except Exception:
                 pass
             log.error(f"get_epic {ticker}: best match {best.get('epic')} ({best.get('instrumentName')}, bid "
@@ -1575,7 +1589,8 @@ def get_epic(ticker: str) -> Optional[str]:
                                f"UK ticker {ticker} resolved to non-UK epic "
                                f"{best.get('epic')} ({best.get('instrumentName')}) — NOT cached, "
                                f"instrument skipped. Verify manually.",
-                               detail=str([m.get('epic') for m in markets[:6]]))
+                               detail=str([m.get('epic') for m in markets[:6]]),
+                               email=ticker_found)   # the name-only path refuses quietly (owner 11-06)
         except Exception:
             pass
         log.error(f"get_epic {ticker}: best match {best.get('epic')} is not a UK share epic — refusing")
