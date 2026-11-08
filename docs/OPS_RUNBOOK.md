@@ -180,6 +180,19 @@ gh workflow run trading-sector-backfill.yml --ref main
 _2026-08-23: 438 resolved, coverage 28.4% → 99.5%. FX, gilts, commodities, indices and investment trusts
 legitimately have no GICS sector._
 
+**New instruments have no market cap -- and then no order.** The weekly Market Cap Backfill (Sun 05:00 UTC) and sector
+backfill (Sun 06:00) only cover the universe as it was that morning. With a min or max instrument value set, a ticker
+with no `instrument_mcap` row is refused by the bridge ("instrument value is unavailable"), and the Best Settings
+market-cap bands leave it out. So adding instruments is not finished until, the same day, you have run:
+
+```bash
+gh workflow run trading-mcap-backfill.yml --ref main -f tickers="AAA,BBB,..."
+gh workflow run trading-sector-backfill.yml --ref main
+```
+
+_2026-11-08 (P-02, 98 tickers): `instrument_mcap` 1,864 -> 1,962 rows, `sector_cache` 2,097 keys, 98 of 98 non-blank.
+The independent test review found the gap; the author had not run either._
+
 **Neither takes effect on the site until a new snapshot is built** — sector is baked in at build time and
 the 52-week map is cached against the snapshot timestamp.
 

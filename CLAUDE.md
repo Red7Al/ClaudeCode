@@ -1,6 +1,6 @@
 # EndToEndTrading — start here
 
-A squeeze (HVF) continuation scanner and trading system. It scans every instrument in its universe (1,999 by `/api/status`, 2026-10-30), publishes a snapshot,
+A squeeze (HVF) continuation scanner and trading system. It scans every instrument in its universe (2,097 by `/api/status`, 2026-11-08), publishes a snapshot,
 serves a Flask web app at <https://www.squeezescanner.cloud>, and places orders on IG.
 
 ## Read in this order
@@ -92,6 +92,12 @@ Each rule exists because skipping it produced a real defect in September 2026.
    specialist skill in its own right"). Code, report design and tests come from different people: an
    independent test-specialist agent reviews the tests, mutates the code, adds missing cases and runs the clean
    suite. Nothing is pushed or deployed until it reports SHIP.
+13. **Owner 2026-11-08: "do not deploy without thorough testing - this always leads to rework with the amount of
+   errors that are made in development"** -- said after P-02 (98 extra instruments) was pushed and deployed on a green
+   CI run of the author's own tests; the specialist, run afterwards, found the new tickers had no market cap and no
+   sector, so the bridge would have refused every order on them. "Push live if testing is complete" is only true
+   after rule 12's SHIP: check that first, and before any push or deploy list the rules that gate it with each one's
+   status. Adding instruments also needs the market-cap and sector backfills the same day (`docs/OPS_RUNBOOK.md` §6).
 
 ## The two defects this repository keeps producing
 
