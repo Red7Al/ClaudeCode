@@ -987,6 +987,12 @@ def describe_size_skip(ticker: str, epic: str) -> str:
     it ACCOUNT_TOO_SMALL (silenced -> daily summary); the generic branch keeps "calculated size is 0"
     so it classes SIZE_ZERO (paged). Distinguishes three cases:
       • margin DEFICIT (free balance < 0)  • IG-minimum unaffordable  • generic zero-size."""
+    if not epic:
+        # No IG epic was found (get_epic refused or found nothing). Keeps "calculated size is 0" so notify still
+        # classes it SIZE_ZERO. Owner 2026-11-09: a wrong or missing instrument is for finding BEFORE an order.
+        return (f"{ticker}: calculated size is 0 because no IG epic was found -- get_epic could not match this "
+                f"instrument to an IG market by name and price, so no order can be placed. Check epic_lookup and "
+                f"data_quality_log; do not loosen the match.")
     skip = LAST_SIZE_SKIP.get(epic or "")
     if skip and skip[0] == "RISK_CAP":
         # Keeps the literal "risk cap" so notify classes it RISK_CAP (daily digest, owner policy -- not paged).
@@ -1375,8 +1381,11 @@ def live_tickers() -> set:
     return {r[0] for r in rows}
 
 
-def _epic_alert(ticker: str, summary: str, detail: str = "") -> None:
-    """get_epic's wrong-instrument alerts, emailed ONLY when the ticker has a live order or position (owner 2026-11-06:
+def _epic_alert(ticker: str, summary: str, detail: str = "", always: bool = False) -> None:
+    """get_epic's alerts about an epic it REFUSED (no name match, not near the price, a non-UK epic for a .L share: the
+    ticker is untradeable, not wrong) are emailed ONLY when the ticker has a live order or position. always=True is for
+    a true wrong-instrument finding -- a CACHED epic that is another company -- which is emailed regardless (owner
+    2026-11-09: "if the instrument is incorrect it must be found before a live order"). The refusals (owner 2026-11-06:
     "I am still getting email each night about 100's of instruments - please resolve them yourself"; owner 2026-11-09:
     "I'm still getting many daily system alerts"). MEASURED 2026-11-09, Morning Chain 03:30: the price step asked for
     an epic for every ticker, 42 had none (FTSE 250 shares IG does not list, US names with no matching code), each
@@ -1384,11 +1393,12 @@ def _epic_alert(ticker: str, summary: str, detail: str = "") -> None:
     repeats every run. Everyone still gets the run-log line and the Slack post. If the live set cannot be read the
     alert is not emailed and the error is logged, as the audit does."""
     normalized = ticker[:-2] if ticker.endswith(".L") and len(ticker) > 2 else ticker
-    try:
-        live = bool({ticker, normalized} & live_tickers())
-    except Exception as e:
-        log.error(f"get_epic {ticker}: alert not checked against live orders: {e}")
-        live = False
+    live = always
+    if not always:
+        try:
+            live = bool({ticker, normalized} & live_tickers())
+        except Exception as e:
+            log.error(f"get_epic {ticker}: alert not checked against live orders: {e}")
     try:
         from notify import alert_system_error
         alert_system_error("EPIC_LOOKUP", "get_epic", summary, detail, email=live)
@@ -1461,12 +1471,12 @@ def get_epic(ticker: str) -> Optional[str]:
         # Mismatch → never trade the wrong instrument. Alert, purge the bad row, then re-resolve.
         log.error(f"get_epic {ticker}: cached epic {cached_epic} ({cached_desc!r}) != Yahoo company "
                   f"{y_name!r} — wrong-instrument; purging + re-resolving via IG.")
-        try:
-            _epic_alert(ticker,
-                               f"{ticker}: cached epic {cached_epic} ({cached_desc}) does not match "
-                               f"'{y_name}' — wrong instrument; purged and re-resolving.")
-        except Exception:
-            pass
+        # always=True: a CACHED epic that is another company is a true wrong-instrument finding, emailed whether or
+        # not the ticker has a live order (owner 2026-11-09: "if the instrument is incorrect it must be found before a
+        # live order"). MEASURED: 0 occurrences in every log read, so no noise.
+        _epic_alert(ticker,
+                    f"{ticker}: cached epic {cached_epic} ({cached_desc}) does not match "
+                    f"'{y_name}' — wrong instrument; purged and re-resolving.", always=True)
         try:
             dbx = get_db()
             try:

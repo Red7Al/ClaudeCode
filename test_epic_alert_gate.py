@@ -115,3 +115,38 @@ def test_the_audit_and_get_epic_share_one_definition_of_live(monkeypatch):
     import run_data_quality_audit as dqa
     monkeypatch.setattr(ig_shim, "live_tickers", lambda: {"X1", "X2"})
     assert dqa._live_tickers() == {"X1", "X2"}
+
+
+class _CachedDb(_Db):
+    def __init__(self, cached):
+        super().__init__()
+        self.cached = cached
+
+    def run(self, sql, **kw):
+        self.sql.append(sql)
+        if sql.startswith("select epic, description from epic_lookup"):
+            return [self.cached]
+        return []
+
+
+def test_a_cached_epic_that_is_another_company_is_emailed_even_with_no_live_order(monkeypatch, alerts):
+    """Owner 2026-11-09: "if the instrument is incorrect it must be found before a live order". A cached row that no
+    longer matches the company is a true wrong-instrument finding (not 'IG does not list it'), so it is not gated.
+    The documented real case (ig_shim get_epic comment, 2026-06-19): AXP was cached as 'AXP Energy'. The epic string here
+    is a placeholder; only the description and the Yahoo company name matter to the check."""
+    db = _CachedDb(("UA.D.AXPAU.DAILY.IP", "AXP Energy Ltd"))
+    monkeypatch.setattr(ig_shim, "get_db", lambda: db)
+    monkeypatch.setattr(ig_shim, "_EPIC_VERIFIED_OVERRIDES", {})
+    monkeypatch.setattr(ig_shim, "_heuristic_epic", lambda t: None)
+    monkeypatch.setattr(ig_shim, "_yahoo_name", lambda t: "American Express Company")
+    monkeypatch.setattr(ig_shim.session, "get", lambda path, params=None, version=None: {"markets": []})
+    _live(monkeypatch, LIVE_ELSEWHERE)
+    ig_shim.get_epic("AXP")
+    wrong = [a for a in alerts if "does not match" in a["summary"]]
+    assert len(wrong) == 1 and wrong[0]["email"] is True
+
+
+def test_an_order_with_no_epic_says_so_and_keeps_its_size_zero_class():
+    text = ig_shim.describe_size_skip("MMM", None)
+    assert "no IG epic was found" in text
+    assert "calculated size is 0" in text, "notify classes SIZE_ZERO on this phrase"
