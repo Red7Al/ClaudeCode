@@ -162,8 +162,10 @@ def test_site_price_mismatch_goes_through_the_gate(monkeypatch, live, expected):
     assert [e for s, e in calls if "trades near its last close" in s] == [expected]
 
 
-@pytest.mark.parametrize("live,expected", [((), False), (("FOO",), True)])
-def test_site_cached_epic_mismatch_goes_through_the_gate(monkeypatch, live, expected):
+@pytest.mark.parametrize("live,expected", [((), True), (("FOO",), True)])
+def test_site_cached_epic_mismatch_is_always_emailed(monkeypatch, live, expected):
+    """Owner 2026-11-09: a wrong instrument must be found before a live order, so this site is NOT gated on a live
+    order (the specialist's first version asserted False for a non-live ticker; the owner's rule reversed that)."""
     calls = _drive(monkeypatch, ticker="FOO", y_name="Foo Corp", live=live, markets=[],
                    cached=[("UB.D.BARUS.DAILY.IP", "Bar Industries")])
     assert ig_shim.get_epic("FOO") is None          # purged, then no IG market for 'FOO'
