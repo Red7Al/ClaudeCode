@@ -1362,6 +1362,40 @@ def tickers_for_epics(epics) -> dict:
     return {str(e): t for t, e in rows if e}
 
 
+def live_tickers() -> set:
+    """Tickers with a live working order or a tracked open position. The one definition of "live": the Data Quality
+    Audit and the get_epic alerts both use it (owner 2026-11-06: only a finding on a live order or position is
+    emailed)."""
+    db = get_db()
+    try:
+        rows = db.run("select ticker from working_orders where status in ('PENDING','WATCHING') "
+                      "union select ticker from positions") or []
+    finally:
+        db.close()
+    return {r[0] for r in rows}
+
+
+def _epic_alert(ticker: str, summary: str, detail: str = "") -> None:
+    """get_epic's wrong-instrument alerts, emailed ONLY when the ticker has a live order or position (owner 2026-11-06:
+    "I am still getting email each night about 100's of instruments - please resolve them yourself"; owner 2026-11-09:
+    "I'm still getting many daily system alerts"). MEASURED 2026-11-09, Morning Chain 03:30: the price step asked for
+    an epic for every ticker, 42 had none (FTSE 250 shares IG does not list, US names with no matching code), each
+    raised this alert -- 10 emailed, 32 held back by the daily cap, none on a live order. A miss is not cached, so it
+    repeats every run. Everyone still gets the run-log line and the Slack post. If the live set cannot be read the
+    alert is not emailed and the error is logged, as the audit does."""
+    normalized = ticker[:-2] if ticker.endswith(".L") and len(ticker) > 2 else ticker
+    try:
+        live = bool({ticker, normalized} & live_tickers())
+    except Exception as e:
+        log.error(f"get_epic {ticker}: alert not checked against live orders: {e}")
+        live = False
+    try:
+        from notify import alert_system_error
+        alert_system_error("EPIC_LOOKUP", "get_epic", summary, detail, email=live)
+    except Exception:
+        pass
+
+
 def get_epic(ticker: str) -> Optional[str]:
     """
     Return the IG epic code for a given ticker symbol.
@@ -1428,8 +1462,7 @@ def get_epic(ticker: str) -> Optional[str]:
         log.error(f"get_epic {ticker}: cached epic {cached_epic} ({cached_desc!r}) != Yahoo company "
                   f"{y_name!r} — wrong-instrument; purging + re-resolving via IG.")
         try:
-            from notify import alert_system_error
-            alert_system_error("EPIC_LOOKUP", "get_epic",
+            _epic_alert(ticker,
                                f"{ticker}: cached epic {cached_epic} ({cached_desc}) does not match "
                                f"'{y_name}' — wrong instrument; purged and re-resolving.")
         except Exception:
@@ -1529,8 +1562,7 @@ def get_epic(ticker: str) -> Optional[str]:
                              f"{best.get('epic')} ({best.get('instrumentName')})")
                 else:
                     try:
-                        from notify import alert_system_error
-                        alert_system_error("EPIC_LOOKUP", "get_epic",
+                        _epic_alert(ticker,
                                            f"{ticker} ({y_name}): no IG search result matches this "
                                            f"company's name (by ticker OR by name) — wrong-instrument "
                                            f"risk, NOT cached, instrument skipped.",
@@ -1554,8 +1586,7 @@ def get_epic(ticker: str) -> Optional[str]:
                         f"close {close} -- taking {best.get('epic')} ({best.get('instrumentName')})")
         else:
             try:
-                from notify import alert_system_error
-                alert_system_error("EPIC_LOOKUP", "get_epic",
+                _epic_alert(ticker,
                                    f"{ticker}: no IG search result trades near its last close {close} -- "
                                    f"wrong-instrument risk, NOT cached, instrument skipped.",
                                    detail=str([(m.get('epic'), m.get('instrumentName'), m.get('bid'))
@@ -1570,8 +1601,7 @@ def get_epic(ticker: str) -> Optional[str]:
         # A .L ticker that cannot resolve to a UK share epic is a wrong-
         # instrument risk — surface loudly and refuse to cache it.
         try:
-            from notify import alert_system_error
-            alert_system_error("EPIC_LOOKUP", "get_epic",
+            _epic_alert(ticker,
                                f"UK ticker {ticker} resolved to non-UK epic "
                                f"{best.get('epic')} ({best.get('instrumentName')}) — NOT cached, "
                                f"instrument skipped. Verify manually.",

@@ -431,15 +431,10 @@ _EMAILED_VERDICTS = ("PIN_MISMATCH", "IDENTITY_MISMATCH", "CRITICAL_MISMATCH")
 
 
 def _live_tickers() -> set:
-    """Tickers with a live working order or a tracked open position."""
-    from db_pool import get_db
-    db = get_db()
-    try:
-        rows = db.run("select ticker from working_orders where status in ('PENDING','WATCHING') "
-                      "union select ticker from positions") or []
-    finally:
-        db.close()
-    return {r[0] for r in rows}
+    """Tickers with a live working order or a tracked open position -- ig_shim.live_tickers, the one definition
+    (get_epic's alerts use it too)."""
+    from ig_shim import live_tickers
+    return live_tickers()
 
 
 def _email_findings(rows: list) -> bool:
