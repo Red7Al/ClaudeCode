@@ -131,3 +131,89 @@ def test_alert_failure_never_raises_into_the_order(monkeypatch):
     def boom(*a, **k): raise RuntimeError("x")
     monkeypatch.setattr("notify.alert_system_error", boom)
     assert ig_shim.sizing_sanity_check("AXON", {"balance": 540.0, "available": 78.5, "risk_amount": 1.57}, {}) is False
+
+
+# --- P-04: every post-limit miss is mailed once a day (360.AX / AAPL 2026-11-11 were silent SIZE_ZERO rows) ------
+def _miss(monkeypatch, reason, **kw):
+    import notify
+    mails = []
+    monkeypatch.setattr("trade_email.send_simple_email", lambda subj, text, html=None, recipients=None: mails.append(subj) or True)
+    monkeypatch.setattr(notify, "_send", lambda *a, **k: None)
+    monkeypatch.setattr("db_pool.get_db", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+    notify._EMAILED_NO_DB.clear()
+    notify.alert_missed_trade("AAPL", "BUY", reason, "", **kw)
+    notify.alert_missed_trade("AAPL", "BUY", reason, "", **kw)      # same day again: no second mail
+    return mails
+
+
+NO_EPIC = ("AAPL: calculated size is 0 because no IG epic was found -- get_epic could not match this instrument "
+           "to an IG market by name and price, so no order can be placed.")
+
+
+def test_size_zero_miss_after_the_limits_is_mailed_once(monkeypatch):
+    m = _miss(monkeypatch, NO_EPIC, email=True)
+    assert len(m) == 1 and "AAPL" in m[0]
+
+
+def test_size_zero_miss_from_other_callers_stays_silent(monkeypatch):
+    assert _miss(monkeypatch, NO_EPIC) == []
+
+
+def test_account_too_small_is_never_mailed_one_by_one(monkeypatch):
+    assert _miss(monkeypatch, "AAPL: account too small for IG's minimum size", email=True) == []
+
+
+# --- specialist additions: DB-up dedupe, recipients, classes, exceptions, caller wiring -------------------------
+class _FakeDB:
+    def __init__(self, occ): self.occ = occ
+    def run(self, *a, **k): return [[self.occ]]
+    def close(self): pass
+
+
+def _miss_db(monkeypatch, reason, occ, **kw):
+    import notify
+    mails = []
+    monkeypatch.setattr("trade_email.send_simple_email",
+                        lambda subj, text, html=None, recipients=None: mails.append((subj, text, recipients)) or True)
+    monkeypatch.setattr(notify, "_send", lambda *a, **k: None)
+    monkeypatch.setattr("db_pool.get_db", lambda: _FakeDB(occ))
+    notify._EMAILED_NO_DB.clear()
+    notify.alert_missed_trade("AAPL", "BUY", reason, "", **kw)
+    return mails
+
+
+def test_db_up_first_occurrence_mails_repeat_does_not(monkeypatch):
+    assert len(_miss_db(monkeypatch, NO_EPIC, 1, email=True)) == 1
+    assert _miss_db(monkeypatch, NO_EPIC, 2, email=True) == []
+
+
+def test_mail_goes_to_the_order_users_address_and_carries_the_reason(monkeypatch):
+    m = _miss_db(monkeypatch, NO_EPIC, 1, email=True, recipients=["u@x.com"])
+    assert m[0][2] == ["u@x.com"] and NO_EPIC in m[0][1] and "SIZE_ZERO" in m[0][0]
+
+
+def test_insufficient_funds_and_other_do_the_documented_thing(monkeypatch):
+    assert _miss_db(monkeypatch, "INSUFFICIENT_FUNDS on AAPL", 1, email=True) == []
+    assert len(_miss_db(monkeypatch, "something unclassifiable", 1, email=True)) == 1      # OTHER is mailed
+    assert len(_miss_db(monkeypatch, "AAPL: over the risk cap -- x", 1)) == 1              # RISK_CAP path unchanged
+
+
+def test_mail_failure_never_raises_into_the_order(monkeypatch):
+    import notify
+    monkeypatch.setattr("trade_email.send_simple_email", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("smtp")))
+    monkeypatch.setattr(notify, "_send", lambda *a, **k: None)
+    monkeypatch.setattr("db_pool.get_db", lambda: _FakeDB(1))
+    notify.alert_missed_trade("AAPL", "BUY", NO_EPIC, "", email=True)
+
+
+def test_only_the_post_limit_caller_mails_and_never_the_manual_button():
+    import re, pathlib
+    for f in pathlib.Path(".").glob("*.py"):
+        if f.name.startswith("test_"):
+            continue
+        lines = "\n".join(l for l in f.read_text(encoding="utf8", errors="ignore").splitlines()
+                          if "alert_missed_trade" in l or "recipients=_profile_recipients" in l)
+        on = len(re.findall(r"email\s*=\s*(?:True|\(session_name)", lines))
+        assert on == (1 if f.name == "ig_shim.py" else 0), f.name
+    # WEB_MANUAL ("Create an order") is shown the reason on the page: it is not also mailed.
+    assert 'email=(session_name != "WEB_MANUAL")' in pathlib.Path("ig_shim.py").read_text(encoding="utf8")

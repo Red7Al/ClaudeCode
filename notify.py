@@ -927,7 +927,7 @@ _EMAILED_NO_DB = set()
 
 
 def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary: str = "",
-                       silent: bool = False, recipients=None):
+                       silent: bool = False, recipients=None, email: bool = False):
     """
     A TRADEABLE signal fired but the trade was NOT placed — surface it to #alerts
     so a missed opportunity is never silent. (User directive 2026-06-09.)
@@ -946,6 +946,8 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
     the alert posts anyway (fail-open — never silent).
     """
     reason_class, corrective = _classify_missed_trade(reason)
+    # Owner 2026-06-24: the account-size / funds skips stay in the daily digest, never mailed one by one.
+    email = bool(email) and reason_class not in ("ACCOUNT_TOO_SMALL", "INSUFFICIENT_FUNDS")
 
     # Auto-silence noise classes (user 2026-06-24): record + roll into the daily digest, never page
     # #alerts per occurrence. The operator asked NOT to receive each size/margin skip individually.
@@ -976,7 +978,7 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
             db.close()
     except Exception as e:
         log.warning(f"missed_trade_log upsert failed ({e}) — posting alert without dedupe")
-    if not _db_ok and reason_class == "RISK_CAP":
+    if not _db_ok and (email or reason_class == "RISK_CAP"):
         # DB down: the counter cannot dedupe, so a RISK_CAP email would repeat every cycle. Dedupe in-process.
         _k = (str(__import__("datetime").date.today()), ticker, direction, reason_class)
         if _k in _EMAILED_NO_DB:
@@ -989,7 +991,10 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
                  f"occurrence #{occurrences} today, alert suppressed (deduped)")
         return
 
-    if reason_class == "RISK_CAP":
+    if email or reason_class == "RISK_CAP":
+        # P-04 (owner 2026-11-11): `email=True` is passed by the one caller that stands AFTER the trader's limits
+        # (ig_shim.place_hvf_order_from_sig, size <= 0), so every miss there is mailed, not only the risk cap:
+        # 360.AX and AAPL were missed 5 and 6 times on 11-11 as silent SIZE_ZERO rows nobody read.
         # Owner 2026-11-11: a trigger that passed every limit but was not ordered because IG's smallest size
         # breaks the risk cap is EMAILED AT THE TIME ("I would like to see the MISS at the time - not at end of a
         # working day"), to the email held in that user's configuration ("the email account used should be the one
@@ -997,7 +1002,7 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
         try:
             from trade_email import send_simple_email
             send_simple_email(
-                f"Order NOT placed: {ticker} {direction} (risk cap)",
+                f"Order NOT placed: {ticker} {direction} ({'risk cap' if reason_class == 'RISK_CAP' else reason_class})",
                 f"{ticker} {direction} triggered and passed your limits, but no order was placed."
                 f"\n\n{reason}\n",
                 recipients=recipients)

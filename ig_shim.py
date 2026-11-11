@@ -3875,7 +3875,7 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         try:
             from notify import alert_missed_trade
             alert_missed_trade(ticker, direction, _reason, str(sig.get("primaries_fired") or ""),
-                               recipients=_profile_recipients(profile))
+                               recipients=_profile_recipients(profile), email=(session_name != "WEB_MANUAL"))
         except Exception:
             pass
         return None
