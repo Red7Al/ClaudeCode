@@ -528,3 +528,25 @@ def test_a_paused_ig_login_skips_the_pass_and_exits_zero(monkeypatch):
     assert ac.exit_code(summary) == 0
     monkeypatch.setattr(ig_shim, "get_open_positions", lambda: (_ for _ in ()).throw(requests.ConnectionError("x")))
     assert ac.exit_code(ac.run(user="Alex", on_date="2026-11-11", apply=True)) == 1
+
+
+def test_a_login_block_during_a_close_is_a_failure_not_a_pause(monkeypatch):
+    """close_trade errors are caught per position: a position whose close was attempted and not made is a failure
+    (exit 1), even when the cause was IGLoginBlocked. Only a block before any close is a skipped pass."""
+    import ig_shim
+
+    def _blocked(*a, **k):
+        raise ig_shim.IGLoginBlocked({"since": "x", "reason": "HTTP 403", "status": 403, "last_try": 0})
+
+    _drive_run(monkeypatch, close_returns=True)
+    monkeypatch.setattr(ig_shim, "close_trade", _blocked)
+    summary = ac.run(user="owner", on_date="2026-09-24", apply=True)
+    assert summary["failed"] == 1 and not summary.get("paused"), summary
+    assert ac.exit_code(summary) == 1
+
+
+def test_a_pause_never_hides_a_failure_already_counted():
+    """exit_code reads failed/error/not_recorded whatever else the summary holds."""
+    assert ac.exit_code({"paused": "x", "failed": 1}) == 1
+    assert ac.exit_code({"paused": "x", "not_recorded": 1}) == 1
+    assert ac.exit_code({"paused": "x"}) == 0
