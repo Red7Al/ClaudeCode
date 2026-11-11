@@ -269,6 +269,36 @@ def _ordered_triggers(sigs: list, owner: str = None) -> set:
     return done
 
 
+def _alert_unaccounted(unordered: dict, sigs: dict) -> list:
+    """P-04 check 1 (owner 2026-11-11): every report trigger in the ordering window ends a pass ordered, skipped
+    WITH a recorded reason (a missed_trade_log row today), or too old. A trigger left with none of those -- it
+    raised, was deferred by the per-run cap, or the engine returned nothing without recording why -- is emailed
+    (capped system alert), so the owner need not spot it. Returns the unaccounted tickers."""
+    try:
+        from db_pool import get_db
+        db = get_db()
+        try:
+            rows = db.run("select distinct ticker from missed_trade_log where trade_date = current_date "
+                          "and ticker = any(:t)", t=sorted(unordered))
+        finally:
+            db.close()
+        recorded = {r[0] for r in rows or []}
+    except Exception as e:
+        log.warning(f"bridge: missed_trade_log unreadable ({e}); treating every unordered trigger as unaccounted")
+        recorded = set()
+    bad = sorted(t for t in unordered if t not in recorded)
+    if bad:
+        lines = [f"{t} {sigs[t].get('direction')} triggered {sigs[t].get('trig_date')}: {unordered[t]}" for t in bad]
+        log.error("bridge: report trigger(s) with no order and no recorded reason: " + "; ".join(lines))
+        try:
+            from notify import alert_system_error
+            alert_system_error("WEB_BRIDGE", "Order Bridge", f"{len(bad)} report trigger(s) unaccounted for",
+                               "In the ordering window, no order and no recorded reason:\n" + "\n".join(lines))
+        except Exception as e:
+            log.warning(f"bridge: unaccounted-trigger email failed: {e}")
+    return bad
+
+
 def run_bridge() -> dict:
     """One bridge pass. Returns a summary dict {candidates, attempted, placed}."""
     from run_session import get_user_profile
@@ -315,9 +345,13 @@ def run_bridge() -> dict:
                     f"None — see hvf_web/server.py _live_vwap_atr docstring): {e}")
         vwap_atr = {}
 
+    unordered = {}      # report trigger -> why this pass left it without an order (P-04 check 1)
     for r in cands:
         if summary["placed"] >= BRIDGE_MAX_PER_RUN:
             log.info(f"bridge: per-run cap ({BRIDGE_MAX_PER_RUN}) reached - remaining candidates wait for the next pass.")
+            for rest in cands[cands.index(r):]:
+                if rest.get("_sig") and rest["ticker"] not in skip:
+                    unordered[rest["ticker"]] = f"deferred by the per-run cap ({BRIDGE_MAX_PER_RUN})"
             break
         tk = r["ticker"]
         if tk in skip:
@@ -347,8 +381,14 @@ def run_bridge() -> dict:
             if wo:
                 summary["placed"] += 1
                 log.info(f"bridge: {tk} -> working order ({wo.get('status', 'ok')})")
+            elif r.get("_sig"):
+                unordered[tk] = "no order placed"
         except Exception as e:
             log.warning(f"bridge: {tk} failed: {e}")
+            if r.get("_sig"):
+                unordered[tk] = f"raised: {e}"
+    if unordered:
+        _alert_unaccounted(unordered, {r["ticker"]: r["_sig"] for r in cands if r.get("_sig")})
 
     try:
         from ig_shim import run_let_winners_run

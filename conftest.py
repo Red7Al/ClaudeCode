@@ -159,3 +159,17 @@ def _scanner_report_sent_store_in_memory(monkeypatch):
     monkeypatch.setattr(web_store, "read_json_store_versioned", read)
     monkeypatch.setattr(web_store, "save_json_store_versioned", save)
     yield mem
+
+
+@pytest.fixture(autouse=True)
+def _bridge_unaccounted_alert_offline(request, monkeypatch):
+    """order_bridge._alert_unaccounted (P-04 check 1) reads missed_trade_log and emails. MEASURED 2026-11-11 in a clean
+    worktree: with the CI placeholder credentials the existing bridge tests, whose stubbed engine returns no order, reached
+    the real get_db and hung the suite for over an hour. Every test gets a no-op; test_bridge_accounting.py tests the real one."""
+    if request.module.__name__ == "test_bridge_accounting":
+        return
+    try:
+        from hvf_web import order_bridge
+    except Exception:
+        return
+    monkeypatch.setattr(order_bridge, "_alert_unaccounted", lambda unordered, sigs: [])
