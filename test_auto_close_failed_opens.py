@@ -506,3 +506,25 @@ def test_every_candidate_lands_in_exactly_one_bucket(monkeypatch):
         accounted = (summary["closed"] + summary["failed"] + summary["gone"]
                      + summary["not_tradeable"] + summary["not_recorded"])
         assert accounted == summary["to_close"], f"unaccounted candidate with close_trade={returns}"
+
+
+def test_a_paused_ig_login_skips_the_pass_and_exits_zero(monkeypatch):
+    """2026-11-11: IG refused logins from 03:31 UTC and 28 consecutive 10-minute runs exited 1, one GitHub failure
+    email each. Nothing was asked of the broker; the pause emails once itself. A pass that CANNOT log in is
+    skipped (exit 0, `paused` recorded) -- but any other error still exits 1."""
+    import ig_shim
+    import requests
+
+    def _blocked():
+        raise ig_shim.IGLoginBlocked({"since": "2026-11-11 03:31 UTC", "reason": "HTTP 403", "status": 403,
+                                      "last_try": 0})
+
+    summary, _ = _drive_run(monkeypatch, close_returns=True)
+    monkeypatch.setattr(ig_shim, "get_open_positions", _blocked)
+    from hvf_web import web_users as _wu
+    summary = ac.run(user="Alex", on_date="2026-11-11", apply=True)
+    assert "IG logins paused" in summary.get("paused", ""), summary
+    assert not summary.get("error")
+    assert ac.exit_code(summary) == 0
+    monkeypatch.setattr(ig_shim, "get_open_positions", lambda: (_ for _ in ()).throw(requests.ConnectionError("x")))
+    assert ac.exit_code(ac.run(user="Alex", on_date="2026-11-11", apply=True)) == 1

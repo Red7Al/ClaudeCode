@@ -345,6 +345,13 @@ def run(user=None, on_date=None, apply=False, require_window=True, now=None, win
                                   r.get("ticker"), deal, detail or "IG did not confirm the close")
         finally:
             db.close()
+    except ig_shim.IGLoginBlocked as exc:
+        # IG logins are paused after a refusal (ig_shim "Login pause"): no login was sent, nothing was asked of
+        # the broker, and the pause already emails once at its start and once at its end. Exiting 1 here made
+        # every 10-minute run red -- MEASURED 2026-11-11: 28 failed runs from 05:01 UTC, each a GitHub failure
+        # email (owner: "many email errors for today"). Positions are left open, as for any unjudgeable one.
+        log.warning("auto-close pass skipped, IG logins are paused: %s", exc)
+        summary["paused"] = str(exc)[:300]
     except Exception as exc:
         log.error("auto-close pass failed: %s", exc)
         # Recorded, not just logged: the caller decides the exit code from the summary, and a pass that
