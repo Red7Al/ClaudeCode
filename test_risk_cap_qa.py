@@ -241,3 +241,35 @@ def test_the_session_paths_report_the_cap_reason(monkeypatch):
     reason = run_session._size_skip_reason("EP.TEST", "CVX")
     assert reason.startswith("CVX: over the risk cap")
     assert notify._classify_missed_trade(reason)[0] == "RISK_CAP"
+
+
+def test_db_down_does_not_flood_risk_cap_emails(monkeypatch):
+    """DB unavailable -> occurrences defaults to 1; the same miss must still be emailed once per process."""
+    mails = []
+    monkeypatch.setattr("trade_email.send_simple_email", lambda *a, **k: mails.append(a) or True)
+    monkeypatch.setattr("db_pool.get_db", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+    monkeypatch.setattr(notify, "_EMAILED_NO_DB", set())
+    _size(monkeypatch, 0.04, 515.0)
+    r = ig_shim.describe_size_skip("CVX", "EP.TEST")
+    for _ in range(4):
+        notify.alert_missed_trade("CVX", "BUY", r, "")
+    notify.alert_missed_trade("XOM", "BUY", r, "")
+    assert len(mails) == 2
+
+
+def test_an_email_failure_never_breaks_the_caller(monkeypatch):
+    def boom(*a, **k): raise RuntimeError("smtp down")
+    monkeypatch.setattr("trade_email.send_simple_email", boom)
+    monkeypatch.setattr("db_pool.get_db", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+    monkeypatch.setattr(notify, "_EMAILED_NO_DB", set())
+    _size(monkeypatch, 0.04, 515.0)
+    notify.alert_missed_trade("CVX", "BUY", ig_shim.describe_size_skip("CVX", "EP.TEST"), "")
+
+
+def test_only_risk_cap_is_emailed(monkeypatch):
+    mails = []
+    monkeypatch.setattr("trade_email.send_simple_email", lambda *a, **k: mails.append(a) or True)
+    monkeypatch.setattr("db_pool.get_db", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+    monkeypatch.setattr(notify, "_EMAILED_NO_DB", set())
+    notify.alert_missed_trade("CVX", "BUY", "account too small for IG minimum deal", "", silent=True)
+    assert mails == []

@@ -923,6 +923,9 @@ def _classify_missed_trade(reason: str):
     return "OTHER", "Unclassified block reason — review manually."
 
 
+_EMAILED_NO_DB = set()
+
+
 def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary: str = "",
                        silent: bool = False, recipients=None):
     """
@@ -950,6 +953,7 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
         silent = True
 
     occurrences = 1
+    _db_ok = False
     try:
         from db_pool import get_db
         db = get_db()
@@ -967,10 +971,18 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
                 t=ticker, d=direction, c=reason_class, r=reason,
                 s=signal_summary or None)
             occurrences = rows[0][0]
+            _db_ok = True
         finally:
             db.close()
     except Exception as e:
         log.warning(f"missed_trade_log upsert failed ({e}) — posting alert without dedupe")
+    if not _db_ok and reason_class == "RISK_CAP":
+        # DB down: the counter cannot dedupe, so a RISK_CAP email would repeat every cycle. Dedupe in-process.
+        _k = (str(__import__("datetime").date.today()), ticker, direction, reason_class)
+        if _k in _EMAILED_NO_DB:
+            occurrences = 2
+        else:
+            _EMAILED_NO_DB.add(_k)
 
     if occurrences > 1:
         log.info(f"Missed trade {ticker} {direction} {reason_class} — "
