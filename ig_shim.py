@@ -848,6 +848,20 @@ def order_skip_reason(ticker):
 RISK_CAP_MULT = 2.0
 
 
+def _profile_recipients(profile):
+    """[the email held in the user's configuration] for the login that owns this engine profile, or None (the
+    global EMAIL_RECIPIENTS). Owner 2026-11-11: an order's emails go to the user of the order."""
+    try:
+        em = (profile or {}).get("email")
+        if not em:
+            import trading_limits
+            from hvf_web import web_users
+            em = web_users.email_for(trading_limits.login_for_profile(profile))
+        return [em] if em else None
+    except Exception:
+        return None
+
+
 def calculate_position_size(epic: str, stop_distance: float,
                             risk_amount: float,
                             available_funds: float = None) -> tuple[float, float]:
@@ -3825,7 +3839,8 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         LAST_ORDER_SKIP[ticker] = _reason
         try:
             from notify import alert_missed_trade
-            alert_missed_trade(ticker, direction, _reason, str(sig.get("primaries_fired") or ""))
+            alert_missed_trade(ticker, direction, _reason, str(sig.get("primaries_fired") or ""),
+                               recipients=_profile_recipients(profile))
         except Exception:
             pass
         return None

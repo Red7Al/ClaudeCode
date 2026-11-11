@@ -7,6 +7,12 @@ the command that produced it or says it is unproven. Last updated **2026-10-20 (
 
 **Freeze ended 2026-11-06 20:00 UK. The 155 items in `ChangeRequests/20261101.txt` are held for the owner's review a further 48 hours, to Sun 2026-11-08 20:07 UK (owner 2026-11-06: "wait 48 more hours for the review").**
 
+## 0a. 2026-11-11 -- Closing Window pause + risk-cap miss email
+
+- IG refused logins from 03:31 UTC (HTTP 403, no errorCode; retry 09:31 refused, next ~11:26). Closing Window exited 1 on the pause: 28 failed runs, one GitHub email each. Fixed `e77ada1`/`15fd8cf` (a paused login skips the pass, exit 0); specialist SHIP, clean suite 2,230 passed.
+- AXON (trigger 11-06) was not a timing fault: first possible bridge pass Mon 11-09 06:02, skipped by the 11-01 risk cap. Owner 2026-11-11: such a miss is emailed AT THE TIME to the order user's configured address -- built (`notify.alert_missed_trade`, `ig_shim._profile_recipients`), awaiting specialist SHIP before push. ChangeRequests 20261101 P-03.
+- Owed: why risk per trade is 1.57 (owner: 'very low'); Daily Diagnostics 07:30 failure cause; bridge reports success while IG is paused.
+
 ## 0. IN PROGRESS 2026-11-06 -- nightly "wrong-instrument" email (owner: "please resolve them yourself")
 
 | Fact | Proof |

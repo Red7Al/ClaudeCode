@@ -132,8 +132,41 @@ def test_a_risk_cap_alert_is_not_paged(monkeypatch):
     monkeypatch.setattr(notify, "send_alert", lambda *a, **k: sent.append(a) or True, raising=False)
     monkeypatch.setattr("db_pool.get_db", lambda: (_ for _ in ()).throw(RuntimeError("no db in tests")))
     _size(monkeypatch, 0.04, 515.0)
-    notify.alert_missed_trade("CVX", "BUY", ig_shim.describe_size_skip("CVX", "EP.TEST"), "")
-    assert sent == []
+    mails = []
+    monkeypatch.setattr("trade_email.send_simple_email", lambda subj, text, html=None, recipients=None: mails.append((subj, text, recipients)) or True)
+    notify.alert_missed_trade("CVX", "BUY", ig_shim.describe_size_skip("CVX", "EP.TEST"), "", recipients=["u@example.com"])
+    assert sent == []                                   # never Slack
+    # Owner 2026-11-11: the miss is EMAILED at the time, to the order user's configured address.
+    assert len(mails) == 1 and mails[0][2] == ["u@example.com"]
+    assert "CVX" in mails[0][0] and "over the risk cap" in mails[0][1]
+
+
+def test_a_repeat_of_the_same_miss_is_not_emailed_again(monkeypatch):
+    mails = []
+    monkeypatch.setattr("trade_email.send_simple_email", lambda *a, **k: mails.append(a) or True)
+    class _DB:
+        n = 0
+        def run(self, sql, **kw):
+            _DB.n += 1
+            return [[_DB.n]]
+        def close(self): pass
+    monkeypatch.setattr("db_pool.get_db", lambda: _DB())
+    _size(monkeypatch, 0.04, 515.0)
+    r = ig_shim.describe_size_skip("CVX", "EP.TEST")
+    for _ in range(3):
+        notify.alert_missed_trade("CVX", "BUY", r, "")
+    assert len(mails) == 1
+
+
+def test_the_recipient_is_the_email_in_the_user_configuration(monkeypatch):
+    from hvf_web import web_users
+    import trading_limits
+    monkeypatch.setattr(trading_limits, "login_for_profile", lambda p: "Alex")
+    monkeypatch.setattr(web_users, "email_for", lambda n: {"Alex": "alex@example.com"}.get(n, ""))
+    assert ig_shim._profile_recipients({"name": "Owner"}) == ["alex@example.com"]
+    assert ig_shim._profile_recipients({"name": "Owner", "email": "x@example.com"}) == ["x@example.com"]
+    monkeypatch.setattr(web_users, "email_for", lambda n: "")
+    assert ig_shim._profile_recipients({"name": "Owner"}) is None
 
 
 # -- the callers ------------------------------------------------------------------------------------------

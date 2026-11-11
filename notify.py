@@ -924,7 +924,7 @@ def _classify_missed_trade(reason: str):
 
 
 def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary: str = "",
-                       silent: bool = False):
+                       silent: bool = False, recipients=None):
     """
     A TRADEABLE signal fired but the trade was NOT placed — surface it to #alerts
     so a missed opportunity is never silent. (User directive 2026-06-09.)
@@ -977,6 +977,20 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
                  f"occurrence #{occurrences} today, alert suppressed (deduped)")
         return
 
+    if reason_class == "RISK_CAP":
+        # Owner 2026-11-11: a trigger that passed every limit but was not ordered because IG's smallest size
+        # breaks the risk cap is EMAILED AT THE TIME ("I would like to see the MISS at the time - not at end of a
+        # working day"), to the email held in that user's configuration ("the email account used should be the one
+        # for the user order"). Once per ticker/direction/day: `occurrences > 1` returned above.
+        try:
+            from trade_email import send_simple_email
+            send_simple_email(
+                f"Order NOT placed: {ticker} {direction} (risk cap)",
+                f"{ticker} {direction} triggered and passed your limits, but no order was placed."
+                f"\n\n{reason}\n",
+                recipients=recipients)
+        except Exception as e:
+            log.warning(f"risk-cap miss email failed for {ticker}: {e}")
     if silent:
         log.info(f"Missed trade (silent, logged not alerted) {ticker} {direction} "
                  f"{reason_class}: {reason}")
