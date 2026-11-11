@@ -92,3 +92,42 @@ def test_lookup_is_todays_rows_of_missed_trade_log(monkeypatch):
     monkeypatch.setattr("notify.alert_system_error", lambda *a, **k: None)
     order_bridge._alert_unaccounted({"AAA": "x"}, {"AAA": SIG("AAA")})
     assert "from missed_trade_log where trade_date = current_date and ticker = any(:t)" in seen[0]
+
+
+# --- P-04 check 2: sizing sanity -------------------------------------------------------------------------------
+def _sizing(monkeypatch, bal, avail, risk, rpt=0.02):
+    import ig_shim
+    sent = []
+    monkeypatch.setattr("notify.alert_system_error", lambda *a, **k: sent.append(a))
+    got = ig_shim.sizing_sanity_check("AXON", {"balance": bal, "available": avail, "risk_amount": risk},
+                                      {"risk_per_trade": rpt})
+    return got, sent
+
+
+def test_risk_far_below_the_setting_is_alerted(monkeypatch):
+    got, sent = _sizing(monkeypatch, 540.0, 78.5, 1.57)        # 2026-11-09: 1.57 vs 10.80 expected
+    assert got and len(sent) == 1 and "AXON" in sent[0][3] and "1.57" in sent[0][3]
+
+
+def test_risk_near_the_setting_is_not_alerted(monkeypatch):
+    assert _sizing(monkeypatch, 540.0, 400.0, 8.0) == (False, [])
+
+
+def test_missing_balance_never_raises_or_alerts(monkeypatch):
+    assert _sizing(monkeypatch, None, None, None) == (False, [])
+
+
+def test_alert_subject_is_stable_across_tickers_so_the_daily_dedupe_holds(monkeypatch):
+    import ig_shim
+    sent = []
+    monkeypatch.setattr("notify.alert_system_error", lambda *a, **k: sent.append(a))
+    for tk, risk in (("AXON", 1.57), ("ARM", 2.0)):
+        ig_shim.sizing_sanity_check(tk, {"balance": 540.0, "available": 78.5, "risk_amount": risk}, {"risk_per_trade": 0.02})
+    assert len(sent) == 2 and sent[0][2] == sent[1][2]          # same subject -> notify emails once a UTC day
+
+
+def test_alert_failure_never_raises_into_the_order(monkeypatch):
+    import ig_shim
+    def boom(*a, **k): raise RuntimeError("x")
+    monkeypatch.setattr("notify.alert_system_error", boom)
+    assert ig_shim.sizing_sanity_check("AXON", {"balance": 540.0, "available": 78.5, "risk_amount": 1.57}, {}) is False

@@ -3612,6 +3612,36 @@ def reconcile_working_orders() -> dict:
     return summary
 
 
+SIZING_ALERT_BELOW = 0.25    # alert when the risk used is under this share of balance x risk_per_trade (11-09 case: 14.5%)
+
+
+def sizing_sanity_check(ticker: str, sized: dict, profile: dict) -> bool:
+    """P-04 check 2 (owner 2026-11-11): log IG's available funds, the total balance and the risk this order is
+    sized on, and email when that risk is under SIZING_ALERT_BELOW of balance x the profile's risk_per_trade.
+    Measured trigger: 2026-11-09 risk 1.57 against a 2.00% setting, i.e. sized on about GBP 78 available.
+    Returns True when an alert was raised. Never raises."""
+    try:
+        bal, avail, risk = sized.get("balance"), sized.get("available"), sized.get("risk_amount")
+        rpt = float((profile or {}).get("risk_per_trade", 0.02))
+        if not (bal and risk is not None and rpt > 0):
+            return False
+        expected = float(bal) * rpt
+        log.info(f"{ticker}: sizing - balance {bal}, available {avail}, risk {risk:.2f} "
+                 f"(setting {rpt:.2%} of balance = {expected:.2f})")
+        if risk >= SIZING_ALERT_BELOW * expected:
+            return False
+        from notify import alert_system_error
+        alert_system_error("WEB_BRIDGE", "Order sizing", "order risk is under a quarter the risk_per_trade setting",
+                           f"{ticker}: risk is {risk / expected:.0%} of the setting; the order is sized on risk {risk:.2f}; the profile's risk_per_trade "
+                           f"{rpt:.2%} of the balance {bal} is {expected:.2f}. IG available funds: {avail}.\n"
+                           "Risk is taken from available funds (margin left after open positions and working "
+                           "orders), so it shrinks as the account fills.")
+        return True
+    except Exception as e:
+        log.warning(f"sizing sanity check failed for {ticker}: {e}")
+        return False
+
+
 def size_working_order(ticker: str, direction: str, entry, stop, target, profile: dict,
                        stress_mult: float = 1.0) -> dict:
     """The size an HVF working order for `ticker` would be placed at, and the levels in IG's units:
@@ -3623,6 +3653,7 @@ def size_working_order(ticker: str, direction: str, entry, stop, target, profile
 
     size = 0.0
     epic = None   # defined before the try so the size<=0 reason lookup is NameError-safe
+    bal, risk_amount = None, None   # reported back for the sizing sanity check (P-04 check 2)
     try:
         epic = get_epic(ticker)
         if not epic:
@@ -3661,6 +3692,8 @@ def size_working_order(ticker: str, direction: str, entry, stop, target, profile
     except Exception as e:
         log.warning(f"Working-order size calc failed for {ticker}: {e}")
     return {"size": size, "epic": epic, "entry": entry, "stop": stop, "target": target,
+            "balance": (bal or {}).get("balance"), "available": (bal or {}).get("available"),
+            "risk_amount": risk_amount,
             "min_size": LAST_MIN_SIZE.get(epic),
             "reason": describe_size_skip(ticker, epic) if size <= 0 else None}
 
@@ -3809,6 +3842,8 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
     sized = size_working_order(ticker, direction, entry, stop, target, profile, stress_mult)
     if sized.get("no_distance"):
         return None
+    if size_override is None:
+        sizing_sanity_check(ticker, sized, profile)
     size, epic = sized["size"], sized["epic"]
     entry, stop, target = sized["entry"], sized["stop"], sized["target"]
     # "Create an order" with the volume the user typed (owner 2026-10-21: "I want the option to override the
