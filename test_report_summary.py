@@ -19,10 +19,16 @@ def summary(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "_SUMMARY_DISABLED", False)
     server._SUMMARY_CACHE.update(mtime=None, data=None)
 
+    last = [0.0]
+
     def write(gen, built_at=None, **sections):
         built_at = built_at or dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")
         path.write_text(json.dumps({"generated_utc": gen, "built_at": built_at, "sections": sections}))
-        os.utime(path, (path.stat().st_atime, path.stat().st_mtime + 1))
+        # STRICTLY increasing mtime per write: the server caches on mtime, and two writes in one clock tick share an
+        # mtime (MEASURED 2026-11-12: 2,541 of 3,000 quick pairs were identical, even after a +1 bump), which served
+        # the first file's data and failed this module once in a full clean-worktree run.
+        last[0] = max(last[0] + 1.0, path.stat().st_mtime + 1.0)
+        os.utime(path, (path.stat().st_atime, last[0]))
     yield write
     server._SUMMARY_CACHE.update(mtime=None, data=None)
 

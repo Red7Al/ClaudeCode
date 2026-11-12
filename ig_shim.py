@@ -1329,9 +1329,14 @@ def _wrong_market(ticker: str, epic: str) -> bool:
     return (not ticker.endswith(".L")) and str(epic or "").startswith("KA.D.")
 
 
-def _last_close(ticker: str) -> Optional[float]:
-    """The ticker's latest stored close from the last 14 days, through price_bars (the price bars file when it is
-    current, else at most ~10 rows of price_history). None when there is none -- never scanned, or no recent bar --
+PRICE_CHECK_CLOSES = 5     # P-05: the price check allows any of the last 5 stored closes (a trigger day moves 10-15%)
+
+
+def _last_close(ticker: str):
+    """The ticker's last PRICE_CHECK_CLOSES stored closes from the last 14 days (a list, oldest first; P-05, owner
+    2026-11-11 -- was the single latest close: 360.AX fell 15% on its trigger day and rose 10% the next, so the one-close
+    8% check refused its correct IG epic and the order was lost). Read through price_bars (the price bars file
+    when it is current, else at most ~10 rows of price_history). None when there is none -- never scanned, or no recent bar --
     or on any error, in which case the price check is skipped exactly as the name check is without a name."""
     try:
         import price_bars
@@ -1344,15 +1349,17 @@ def _last_close(ticker: str) -> Optional[float]:
         finally:
             db.close()
         closes = [float(r[4]) for r in rows or () if r[4] is not None]
-        return closes[-1] if closes else None
+        return closes[-PRICE_CHECK_CLOSES:] or None
     except Exception as exc:
         log.warning(f"get_epic {ticker}: no stored close for the price check ({exc})")
         return None
 
 
-def _price_matches(market: dict, close: float) -> bool:
-    """IG's price for a search result sits within 8% of the ticker's last close, in the same units or x100 either way
-    (pence/cents). MEASURED 2026-10-26: 13 scanned tickers sat on another instrument's code that the name check let
+def _price_matches(market: dict, close) -> bool:
+    """IG's price for a search result sits within 8% of ONE of the ticker's recent closes (`close` is a float or a
+    list of them), in the same units or x100 either way (pence/cents). P-05 2026-11-11 MEASURED over the 39 removed
+    wrong-instrument epics that had IG prices and stored closes: 0 accepted by the last close, 0 by any of the last 5;
+    the nearest sat 11.5% (M&M.NS) and 13.2% (3382.T, best of 5) from a close, outside the 8% band. MEASURED 2026-10-26: 13 scanned tickers sat on another instrument's code that the name check let
     through -- APA (Apache, close 51.90) on APA Group at 1,148 (22x); ICGT.L (1,374p) on ICG PLC at 1,799 (1.31x);
     ISHG on SHY's code (1.10 after /100). Apache's own code was 5,173.5 (0.997 after /100). True when IG gives no
     price: no evidence either way."""
@@ -1360,8 +1367,9 @@ def _price_matches(market: dict, close: float) -> bool:
     px = [float(p) for p in (bid, offer) if p]
     if not px or not close:
         return True
-    ratio = (sum(px) / len(px)) / close
-    return any(0.92 <= ratio / scale <= 1.08 for scale in (1, 100, 0.01))
+    mid = sum(px) / len(px)
+    closes = close if isinstance(close, (list, tuple)) else [close]
+    return any(0.92 <= mid / c / scale <= 1.08 for c in closes if c for scale in (1, 100, 0.01))
 
 
 def tickers_for_epics(epics) -> dict:
