@@ -830,6 +830,8 @@ class _PerThread:
 
 
 LAST_SIZE_SKIP = _PerThread()
+# ticker -> the REAL error text when sizing failed (not 'no epic exists'); describe_size_skip() reports it verbatim.
+LAST_SIZE_ERROR = _PerThread()
 # ticker -> the reason place_hvf_order_from_sig refused this thread's order on size; order_skip_reason() reads it.
 LAST_ORDER_SKIP = _PerThread()
 # epic -> IG's minimum deal size, from this thread's last calculate_position_size for it ("Create an order"
@@ -913,10 +915,12 @@ def calculate_position_size(epic: str, stop_distance: float,
         if available_funds is not None:
             available = available_funds
         else:
+            # A failed balance read must not become 'available = 0' (shown as a too-small account): let it reach
+            # the handler below, which records the real error (owner 2026-11-13: every error 100% clear).
             try:
                 available = get_account_balance()["available"]
-            except Exception:
-                available = 0
+            except Exception as e:
+                raise RuntimeError(f"could not read IG available funds: {type(e).__name__}: {e}") from e
         # ⚠️ DO NOT add an FX conversion here. SPREAD-BET margin = size × level ×
         # margin_factor, in GBP DIRECTLY — the £/point stake already encodes the
         # GBP exposure, so the underlying currency (USD for DELL, GBX for RR.L)
@@ -990,7 +994,7 @@ def calculate_position_size(epic: str, stop_distance: float,
 
     except Exception as e:
         log.warning(f"Position size calculation failed for {epic}: {e}")
-        LAST_SIZE_SKIP[epic] = ("ERROR", None, None)
+        LAST_SIZE_SKIP[epic] = ("ERROR", f"{type(e).__name__}: {e}", None)
         return 0.0, stop_distance   # skip trade on error — 0.5 fallback was unsafe
 
 
@@ -1001,6 +1005,14 @@ def describe_size_skip(ticker: str, epic: str) -> str:
     it ACCOUNT_TOO_SMALL (silenced -> daily summary); the generic branch keeps "calculated size is 0"
     so it classes SIZE_ZERO (paged). Distinguishes three cases:
       • margin DEFICIT (free balance < 0)  • IG-minimum unaffordable  • generic zero-size."""
+    _err = LAST_SIZE_ERROR.pop(ticker, None)   # consumed once: a later, different skip must not repeat a stale failure
+    if _err:
+        return (f"{ticker}: order size could not be calculated because a step FAILED -- {_err}. This is a failure, "
+                f"not a missing instrument. No order placed.")
+    _sk = LAST_SIZE_SKIP.get(epic or "")
+    if _sk and _sk[0] == "ERROR":
+        return (f"{ticker}: order size could not be calculated because a step FAILED -- {_sk[1]}. This is a failure, "
+                f"not a zero-size result. No order placed.")
     if not epic:
         # No IG epic was found (get_epic refused or found nothing). Keeps "calculated size is 0" so notify still
         # classes it SIZE_ZERO. Owner 2026-11-09: a wrong or missing instrument is for finding BEFORE an order.
@@ -1030,9 +1042,8 @@ def describe_size_skip(ticker: str, epic: str) -> str:
                 f"value), but only {_h} is free. This is IG's minimum bet size, not our 2% risk rule, "
                 f"and recurs every scan until the balance covers it. Fix: fund above {_n} (+ a "
                 f"buffer), or remove {ticker} from the trade universe (publishing is unaffected).")
-    return (f"{ticker}: calculated size is 0 — most likely a zero/garbage stop distance or a wrong/404 "
-            f"epic (a units mismatch can inflate the stop so the risk-based size collapses to ~0), not "
-            f"pure affordability. Review the stop distance and the epic.")
+    return (f"{ticker}: calculated size is 0 and no failure was recorded -- the risk-based size rounded to 0 at this "
+            f"stop distance (epic {epic}). Review the stop distance.")
 
 
 def get_account_balance() -> dict:
@@ -1314,8 +1325,9 @@ def _yahoo_name(ticker: str) -> str:
         import yfinance as _yf
         info = _yf.Ticker(ticker).info or {}
         name = info.get("longName") or info.get("shortName") or ""
-    except Exception:
-        name = ""
+    except Exception as e:
+        log.warning(f"Yahoo name lookup failed for {ticker}: {type(e).__name__}: {e} (not cached; will retry)")
+        return ""
     _YNAME_CACHE[ticker] = name
     return name
 
@@ -2635,7 +2647,8 @@ def detect_ig_scale(current: float, level: float) -> float:
         power = round(math.log10(ratio))
         scale = 10.0 ** power
         return scale if abs(ratio / scale - 1.0) <= 0.25 else 1.0
-    except Exception:
+    except Exception as e:
+        log.warning(f"detect_ig_scale failed ({type(e).__name__}: {e}); using scale 1.0")
         return 1.0
 
 
@@ -3661,9 +3674,14 @@ def size_working_order(ticker: str, direction: str, entry, stop, target, profile
 
     size = 0.0
     epic = None   # defined before the try so the size<=0 reason lookup is NameError-safe
+    LAST_SIZE_ERROR.pop(ticker, None)
     bal, risk_amount = None, None   # reported back for the sizing sanity check (P-04 check 2)
     try:
-        epic = get_epic(ticker)
+        try:
+            epic = get_epic(ticker)
+        except Exception as e:
+            LAST_SIZE_ERROR[ticker] = f"IG epic lookup raised {type(e).__name__}: {e}"
+            raise
         if not epic:
             raise ValueError("no IG epic")
         # An earlier refusal for this market in this thread must not describe this one.
@@ -3699,6 +3717,8 @@ def size_working_order(ticker: str, direction: str, entry, stop, target, profile
                      f"(distance {adj_stop_distance}) → stop level {stop}")
     except Exception as e:
         log.warning(f"Working-order size calc failed for {ticker}: {e}")
+        if epic and not LAST_SIZE_ERROR.get(ticker) and not LAST_SIZE_SKIP.get(epic):
+            LAST_SIZE_ERROR[ticker] = f"{type(e).__name__}: {e}"   # e.g. IG price/balance read failed after the epic resolved
     return {"size": size, "epic": epic, "entry": entry, "stop": stop, "target": target,
             "balance": (bal or {}).get("balance"), "available": (bal or {}).get("available"),
             "risk_amount": risk_amount,
@@ -4082,7 +4102,8 @@ def stop_amend_threshold() -> float:
     try:
         import config_store
         return float(config_store.get_value("stop_amend_threshold", "0") or 0) / 100.0
-    except Exception:
+    except Exception as e:
+        log.warning(f"stop_amend_threshold unreadable ({type(e).__name__}: {e}); trailing-stop amendment treated as OFF")
         return 0.0
 
 

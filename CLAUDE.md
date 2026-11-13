@@ -34,6 +34,14 @@ speaking.** Every one had a single cheap command that would have prevented it.
   cannot be measured: **Stop. List the missing information. Ask for clarification. Do not generate code until
   clarification is received.** This applies to facts only the owner holds; engineering decisions you can prove on data
   stay yours ("decide and act", below). If it is measurable, measure it; if it is not, do not assume it.
+- **State confidence before every change -- owner 2026-11-13.** Before every change, output **Confidence: High /
+  Medium / Low**. If it is below High: explain why, ask questions, and make no code changes. High means the change is
+  proven on real data and its tests fail on the old code; anything resting on an unmeasured fact is not High.
+- **Error handling is a priority, and often 2/3 of the code -- owner 2026-11-13.** Every failure path names its real
+  cause to whoever reads it (log, email, screen); a catch-all that drops the error, or maps every failure to one
+  generic message, is a defect (AAPL was reported "no IG epic" for a failed step). A change is not done until its
+  failure paths are written, tested with a real failing step, and say what failed. `test_no_silent_except.py` is the
+  ratchet; the count only falls.
 - **Never type an identifier you have not read from output** — run ID, deal ID, table, line number.
 - **Code is not evidence about the live system.** A declared migration is intent; only the database says
   whether it ran. If the owner describes what he SEES, verify what renders.

@@ -337,7 +337,7 @@ def test_the_size_endpoint_sizes_the_order_on_screen_and_places_nothing(wired, m
 
 def test_an_earlier_accounts_refusal_is_not_this_accounts_reason(monkeypatch):
     """Account A was refused on this market (free margin 167.40); account B's sizing then fails before IG's
-    minimum is checked. B must get the generic reason, not A's money."""
+    minimum is checked. B must get its own real failure (IG 500), not A's money."""
     import ig_shim
     ig_shim.LAST_SIZE_SKIP["UA.D.ARM.DAILY.IP"] = ("ACCOUNT_TOO_SMALL", 483.85, 167.40, 0.04)
     monkeypatch.setattr(ig_shim, "get_epic", lambda tk: "UA.D.ARM.DAILY.IP")
@@ -346,7 +346,7 @@ def test_an_earlier_accounts_refusal_is_not_this_accounts_reason(monkeypatch):
         out = ig_shim.size_working_order("ARM", "BUY", 280.5, 266.1, 360.2, {}, 1.0)
     finally:
         ig_shim.LAST_SIZE_SKIP.pop("UA.D.ARM.DAILY.IP", None)
-    assert out["size"] == 0.0 and "167.40" not in out["reason"] and "calculated size is 0" in out["reason"]
+    assert out["size"] == 0.0 and "167.40" not in out["reason"] and "FAILED" in out["reason"] and "IG 500" in out["reason"]
 
 
 def test_another_requests_refusal_is_invisible_to_this_one():

@@ -2645,8 +2645,9 @@ def run_us_monitor(notify_slack: bool = True) -> list:
                                         "Available margin too small for even the minimum deal size on this "
                                         "instrument — no position placed (no INSUFFICIENT_FUNDS rejection).",
                                         sig.get("signal_summary", ""))
-                                except Exception:
-                                    pass
+                                except Exception as _e:
+                                    log.warning(f"{ticker}: missed-trade alert (margin too small) was NOT sent: "
+                                                f"{type(_e).__name__}: {_e}")
                                 continue
                             from signals import conf_names
                             _confs = conf_names(sig)
