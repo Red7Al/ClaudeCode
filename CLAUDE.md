@@ -30,6 +30,10 @@ speaking.** Every one had a single cheap command that would have prevented it.
 
 - **Proof for every statement.** Attach the command and its result. Label MEASURED / DERIVED / unproven.
   "Do not infer, assume, presume or guess" (owner) — if it is measurable, measure it.
+- **Missing information is a stop, not a guess -- owner 2026-11-13.** When information the task needs is missing and
+  cannot be measured: **Stop. List the missing information. Ask for clarification. Do not generate code until
+  clarification is received.** This applies to facts only the owner holds; engineering decisions you can prove on data
+  stay yours ("decide and act", below). If it is measurable, measure it; if it is not, do not assume it.
 - **Never type an identifier you have not read from output** — run ID, deal ID, table, line number.
 - **Code is not evidence about the live system.** A declared migration is intent; only the database says
   whether it ran. If the owner describes what he SEES, verify what renders.
