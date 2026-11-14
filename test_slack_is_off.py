@@ -68,3 +68,29 @@ def test_every_slack_poster_asks_slack_enabled():
         if posts_slack and re.search(r"\.post\(", t) and "slack_enabled" not in t:
             bad.append(f)
     assert not bad, f"these post to Slack without asking slack_enabled: {bad}"
+
+
+# The one exception: the X-publication channel is not an alert, so it keeps its old default (ON when unset).
+def test_the_x_publication_channel_keeps_its_old_default(monkeypatch):
+    _cfg(monkeypatch, lambda k, d=None: d)
+    assert notify.slack_enabled("twitter") is True
+    notify._SLACK_FLAGS.clear()
+    _cfg(monkeypatch, lambda k, d=None: "0")
+    assert notify.slack_enabled("twitter") is False          # an explicit off is still honoured
+    notify._SLACK_FLAGS.clear()
+    def boom(k, d=None): raise RuntimeError("db down")
+    _cfg(monkeypatch, boom)
+    assert notify.slack_enabled("twitter") is True and notify.slack_enabled("alerts") is False
+
+
+def test_every_alert_channel_is_off_when_unset(monkeypatch):
+    _cfg(monkeypatch, lambda k, d=None: d)
+    for ch in ("alerts", "daily", "signals", "trades", "weekly", "orders"):
+        notify._SLACK_FLAGS.clear()
+        assert notify.slack_enabled(ch) is False, ch
+
+
+def test_the_admin_page_does_not_decide_the_default_on_its_own():
+    """One fact, one function: the page showed channels ON from its own default while the code had them OFF."""
+    src = (ROOT / "hvf_web" / "server.py").read_text(encoding="utf8")
+    assert 'get_value(f"slack_ch_{ch}", "1")' not in src and "slack_enabled(ch)" in src

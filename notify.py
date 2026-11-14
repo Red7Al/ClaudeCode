@@ -145,6 +145,11 @@ WEBHOOKS = {
 
 _SLACK_FLAGS = {}   # channel -> (ts, on)
 
+# Channels that stay ON when unset: only the X-publication drafts / confirmations (publish_one_to_x, quality_report,
+# intraday_signals X drafts). They are not alerts. Every other channel is an alert/report channel and is OFF unless
+# switched on (owner 2026-11-14: "no alerts should currently use slack").
+_SLACK_DEFAULT_ON = {"twitter"}
+
 
 def slack_enabled(channel: str) -> bool:
     """PER-CHANNEL Slack on/off switch (user 2026-08-01): each webhook (alerts / signals / trades / daily /
@@ -152,22 +157,25 @@ def slack_enabled(channel: str) -> bool:
     'slack_ch_<channel>' (config_store) so it applies to BOTH the web server and the GitHub Actions
     monitors. Cached 30s per channel.
 
-    OFF unless explicitly switched on (owner 2026-11-14: "no alerts should currently use slack"; the code stays because
-    it may be used in future). Fail-CLOSED: an unset key or a config read error is OFF, never ON. Measured the same day:
-    'alerts' was unset and so ON, with a webhook configured -- missed-trade alerts were posting to Slack."""
+    Alert and report channels are OFF unless explicitly switched on (owner 2026-11-14: "no alerts should currently use
+    slack"; the code stays because it may be used in future). Fail-CLOSED: an unset key or a config read error is OFF,
+    never ON. Measured the same day: 'alerts' was unset and so ON, with a webhook configured -- missed-trade alerts were
+    posting to Slack. The one exception, _SLACK_DEFAULT_ON, is the X-publication channel (not an alert)."""
     import time as _t
     now = _t.time()
     c = _SLACK_FLAGS.get(channel)
     if c and now - c[0] < 30:
         return c[1]
-    on = False
+    default_on = channel in _SLACK_DEFAULT_ON
+    on = default_on
     try:
         import config_store as _cs
-        v = str(_cs.get_value(f"slack_ch_{channel}", "0")).strip().lower()
+        v = str(_cs.get_value(f"slack_ch_{channel}", "1" if default_on else "0")).strip().lower()
         on = v in ("1", "true", "on", "yes")
     except Exception as e:
-        log.warning(f"slack_enabled({channel}): config unreadable ({type(e).__name__}: {e}); Slack stays OFF")
-        on = False
+        log.warning(f"slack_enabled({channel}): config unreadable ({type(e).__name__}: {e}); using the default "
+                    f"({'ON' if default_on else 'OFF'})")
+        on = default_on
     _SLACK_FLAGS[channel] = (now, on)
     return on
 

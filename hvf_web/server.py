@@ -783,7 +783,7 @@ def api_config():
                         "pinned_overrides": s.get("pinned_overrides", {}),
                         "engine": _cs.get_engine_settings(), "is_admin": _wu.is_admin(name),
                         "x_hvf_markets": _cs.get_x_hvf_markets(),
-                        "slack_channels": {ch: str(_cs.get_value(f"slack_ch_{ch}", "1")).strip().lower() not in ("0", "false", "off", "no")
+                        "slack_channels": {ch: __import__("notify").slack_enabled(ch)
                                            for ch in ("alerts", "daily", "signals", "trades", "weekly")},
                         "features": {"xposts": _cs.get_value("feature_xposts", "false") == "true"}})
     body = request.get_json(silent=True) or {}
