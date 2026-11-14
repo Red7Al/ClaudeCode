@@ -244,10 +244,6 @@ def get_subscription(name: str) -> str:
     return (u or {}).get("subscription", _default_subscription(name))
 
 
-def is_enabled(name: str) -> bool:
-    return bool((_ensure_seeded().get(name) or {}).get("enabled", True))
-
-
 def _now_stamp() -> str:
     """When an account was created, stamped by EVERY path that makes one (user 2026-09-06, P-43: "sort
     the users by creation data or user id (not name) if you have it").

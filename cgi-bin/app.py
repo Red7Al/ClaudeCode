@@ -3,6 +3,7 @@
 import os
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,6 +35,9 @@ def application(environ, start_response):
     request_path = hosted.get("REQUEST_URI", hosted.get("PATH_INFO", "/")).split("?", 1)[0]
     if request_path.startswith(_CGI_PREFIX):
         request_path = request_path[len(_CGI_PREFIX):]
+    # REQUEST_URI is the raw, still percent-encoded URL; PATH_INFO must be decoded (WSGI). Without this
+    # /api/pricebars/%5EGDAXI looked up the ticker "%5EGDAXI" and answered "unknown ticker", so the 18 index
+    # tickers (^DJI, ^GDAXI, ...) never showed a price chart (measured live 2026-11-14).
     hosted["SCRIPT_NAME"] = ""
-    hosted["PATH_INFO"] = request_path or "/"
+    hosted["PATH_INFO"] = unquote(request_path) or "/"
     return app.wsgi_app(hosted, start_response)

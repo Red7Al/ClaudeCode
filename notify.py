@@ -180,11 +180,38 @@ def slack_enabled(channel: str) -> bool:
     return on
 
 
-def _send(channel: str, blocks: list) -> bool:
+def _blocks_text(blocks: list) -> tuple:
+    """(title, plain text) of a Block Kit message, so the same alert can be emailed."""
+    title, lines = "", []
+    for b in blocks or []:
+        t = b.get("type")
+        if t == "header":
+            title = b["text"]["text"]
+        elif t == "section":
+            for f in b.get("fields") or []:
+                lines.append(f["text"].replace("*", "").replace("\n", ": ", 1))
+            if b.get("text"):
+                lines.append(b["text"]["text"].replace("*", "").replace("```", ""))
+        elif t == "context":
+            lines += [e["text"] for e in b.get("elements") or [] if e.get("text")]
+    return title, "\n".join(lines)
+
+
+def _send(channel: str, blocks: list, email: bool = None) -> bool:
     """
     POST a Block Kit message to the specified Slack channel via webhook.
     Returns True on success, False on failure.
+
+    An "alerts" message is also EMAILED (owner 2026-11-14: "slack only alerts should go to email - if we get too much
+    email then that will need to be managed"). It goes through _email_alert, so it is capped and sent once a day per
+    subject. Pass email=False for a caller that already emails the same message.
     """
+    if (channel == "alerts") if email is None else email:
+        try:
+            title, text = _blocks_text(blocks)
+            _email_alert(f"Alert: {title or 'trading system'}"[:200], text)
+        except Exception as e:
+            log.error(f"alert email failed ({channel}): {type(e).__name__}: {e}")
     if not slack_enabled(channel):
         log.info(f"Slack channel '{channel}' disabled — skipping post")
         return False
@@ -1074,7 +1101,9 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
                                  "text": "_First occurrence today — repeats are counted silently; "
                                          "see the session-close summary for totals._\n"
                                          f"{_SIGNAL_KEY}\n{_ts()}"}]})
-    _send("alerts", blocks)
+    # Not emailed: a miss that is not one of the email classes was deliberately quiet (owner 2026-11-06, hundreds of
+    # nightly findings); the daily digest (summarize_missed_trades) carries the totals.
+    _send("alerts", blocks, email=False)
 
 
 def summarize_missed_trades():
@@ -1177,7 +1206,7 @@ def alert_macro_gate_failed(reason: str, vix: float, yield_spread: float, sessio
             "elements": [{"type": "mrkdwn", "text": _ts()}]
         },
     ]
-    _send("alerts", blocks)
+    _send("alerts", blocks)    # emailed too, by _send
 
 
 ALERT_EMAILS_PER_DAY = 10     # owner 2026-10-27: "140 is way too many" -- a hard ceiling across every job
@@ -1250,7 +1279,7 @@ def alert_system_error(session: str, component: str, summary: str, detail: str =
         "type": "context",
         "elements": [{"type": "mrkdwn", "text": _ts()}]
     })
-    _send("alerts", blocks)
+    _send("alerts", blocks, email=False)      # emailed above, with its own subject
 
 
 def session_heartbeat(

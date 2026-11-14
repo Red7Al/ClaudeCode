@@ -218,7 +218,12 @@ workflow file changes, put today's date in its `name:`.
   placed so the user can place it"; "email recipients must be the account holder for IG specific account alerts"; "slack
   has not been used for so long"). Every email about an order that was not placed or is in doubt lists instrument, IG epic,
   direction, type, size, entry, stop, take-profit and good-till (`notify.format_order_details`), and goes to the holder of
-  that IG account (`ig_shim._profile_recipients`), not the global list. An alert that only reaches Slack reaches nobody.
+  that IG account (`ig_shim._profile_recipients`), not the global list. An alert that only reaches Slack reaches nobody. **Owner 2026-11-14: "slack only alerts should go to email - if we get too much email then that will need to be managed"**:
+  every message `notify._send` posts to the `alerts` channel is also emailed (`_email_alert`: once a day per subject, at most
+  `ALERT_EMAILS_PER_DAY` a day); a caller that already emails passes `email=False`. The first-occurrence missed-trade post
+  is not emailed (deliberately quiet classes; the daily digest carries them). Direct posters in `run_lwr_watchdog`,
+  `run_self_audit`, `run_session_watchdog`, `working_orders_report`, `run_hvf_orders` are not yet converted
+  (`ChangeRequests/20261101.txt`).
   **The Slack code stays (it may be used in future) but nothing posts to it now -- owner 2026-11-14:** `notify.slack_enabled`
   is OFF unless `slack_ch_<channel>` is explicitly on, and an unreadable config is OFF (measured that day: `alerts` was
   unset, therefore ON, with a webhook configured). `test_slack_is_off.py` also fails any module that posts without asking it.

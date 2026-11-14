@@ -306,11 +306,6 @@ def get_intraday_move_and_volume(tickers: list[str]) -> dict[str, dict]:
     return data
 
 
-def get_intraday_moves(tickers: list[str]) -> dict[str, float]:
-    """Thin wrapper — returns just pct_move from get_intraday_move_and_volume."""
-    return {k: v["pct_move"] for k, v in get_intraday_move_and_volume(tickers).items()}
-
-
 # ----------------------------------------------------------------------------------------------------------------------
 # Signal gap explanation
 # ----------------------------------------------------------------------------------------------------------------------

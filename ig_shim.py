@@ -2476,22 +2476,6 @@ def close_trade(deal_id: str, reason: str = "MANUAL") -> bool:
 # Price Data
 # ======================================================================================================================
 
-def get_prices(epic: str, resolution: str = "HOUR", count: int = 50) -> list:
-    """
-    Fetch OHLCV candle data for an epic.
-
-    resolution options:
-        SECOND, MINUTE, MINUTE_2, MINUTE_3, MINUTE_5, MINUTE_10,
-        MINUTE_15, MINUTE_30, HOUR, HOUR_2, HOUR_3, HOUR_4, DAY, WEEK, MONTH
-    """
-    data = session.get(
-        f"/prices/{epic}",
-        version="3",
-        params={"resolution": resolution, "max": count, "pageSize": count}
-    )
-    return data.get("prices", [])
-
-
 def get_prices_df(epic: str, resolution: str = "DAY", count: int = 120):
     """
     Fetch IG candles as a pandas DataFrame (Open/High/Low/Close/Volume, date

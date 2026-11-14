@@ -264,11 +264,6 @@ class _Leased:
         return False
 
 
-def pool_stats() -> dict:
-    """Reuse counters, for the diagnostics page and for asserting the pool is actually pooling."""
-    return dict(_POOL_STATS)
-
-
 def get_db(timeout: int = 15, attempts: int = 3):
     """
     A pooled connection to Supabase via the SESSION pooler (5432), with an explicit timeout and

@@ -148,11 +148,6 @@ log = logging.getLogger("quality_report")
 X_STAGGER_MIN, X_STAGGER_MAX = 13 * 60, 17 * 60   # seconds
 
 
-def x_stagger_seconds() -> int:
-    """Random 13–17 min gap between tweets, for when this posts live to X."""
-    return random.randint(X_STAGGER_MIN, X_STAGGER_MAX)
-
-
 # ----------------------------------------------------------------------------------------------------------------------
 # Plain-English formatting helpers
 # ----------------------------------------------------------------------------------------------------------------------

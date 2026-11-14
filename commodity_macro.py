@@ -290,42 +290,6 @@ def get_inflation_signal() -> dict:
 # 5Y5Y = what the market expects inflation to average in years 5-10 from now.
 # ======================================================================================================================
 
-def get_5y5y_signal() -> dict:
-    """
-    Fetch the 5-Year, 5-Year Forward Inflation Expectation Rate (FRED T5YIFR).
-
-    This is the market's view of where inflation will be in 5-10 years —
-    less affected by near-term oil/food shocks than the 5Y spot breakeven.
-    Preferred by central banks and institutional desks for structural inflation view.
-
-    Rising 5Y5Y above 2.5% → persistently elevated inflation expected → bullish metals/energy
-    Falling 5Y5Y below 2.0% → deflation concerns → bearish commodities broadly
-
-    Returns:
-        signal:       BULLISH / BEARISH / NEUTRAL
-        value:        current 5Y5Y rate
-        change:       4-week change
-    """
-    result = {"signal": "NEUTRAL", "value": None, "change": None}
-    try:
-        data = fetch_fred("T5YIFR", periods=8)
-        if len(data) >= 2:
-            current = data[-1]
-            prev    = data[-5] if len(data) >= 5 else data[0]
-            change  = current - prev
-
-            result["value"]  = round(current, 3)
-            result["change"] = round(change,  3)
-
-            if current > 2.5 and change > 0.02:
-                result["signal"] = "BULLISH"
-            elif current < 2.0 or change < -0.05:
-                result["signal"] = "BEARISH"
-    except Exception as e:
-        log.warning(f"5Y5Y signal failed: {e}")
-    return result
-
-
 # ======================================================================================================================
 # Driver 5 — ISM Manufacturing PMI
 # Actual PMI data: above 50 = expansion, below 50 = contraction.

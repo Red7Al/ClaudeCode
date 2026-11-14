@@ -3442,29 +3442,6 @@ _PERF_WARM_INTERVAL = 600   # seconds (10 min)
 _BAD_TICK_CAP = 0.15
 
 
-def _perf_exit(bull: bool, entry: float, stop: float, target: float, bars: list):
-    """bars: chronological (high, low, close) STRICTLY AFTER the trigger bar. Entry is the trigger bar's
-    CLOSE, so the trade can only be stopped/targeted from the NEXT bar on — the trigger bar's own intraday
-    range must never stop it before entry (user 2026-07-17, P-01 LSEG bug A). Returns (state, return_pct)
-    where state is STOPPED / TARGET / None (None = no exit hit yet -> caller marks OPEN to market)."""
-    for hi, lo, cl in bars:
-        if hi is None or lo is None:
-            continue
-        # Reject implausible intraday wicks: fall back to the close when high/low is too far from it.
-        if cl is not None:
-            hi_eff = hi if hi <= cl * (1 + _BAD_TICK_CAP) else cl
-            lo_eff = lo if lo >= cl * (1 - _BAD_TICK_CAP) else cl
-        else:
-            hi_eff, lo_eff = hi, lo
-        hit_stop = (lo_eff <= stop) if bull else (hi_eff >= stop)
-        hit_tgt = (hi_eff >= target) if bull else (lo_eff <= target)
-        if hit_stop:   # same-bar tie resolves to the stop (worst case), standard backtest convention
-            return "STOPPED", ((stop - entry) / entry * 100 if bull else (entry - stop) / entry * 100)
-        if hit_tgt:
-            return "TARGET", ((target - entry) / entry * 100 if bull else (entry - target) / entry * 100)
-    return None, None
-
-
 def _perf_trigger_date(bull: bool, entry: float, ready, bars: list, recorded):
     """The date the setup actually FIRED, derived from price rather than from when a scan noticed it.
 

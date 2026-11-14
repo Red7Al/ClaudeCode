@@ -193,7 +193,7 @@ def test_ionos_shared_hosting_routes_only_api_to_protected_cgi_adapter():
     assert 'RewriteRule ^cgi-bin/ - [F,L]' in htaccess
     assert 'ROOT = Path(__file__).resolve().parents[1]' in adapter
     assert 'hosted["SCRIPT_NAME"] = ""' in adapter
-    assert 'hosted["PATH_INFO"] = request_path or "/"' in adapter
+    assert 'hosted["PATH_INFO"] = unquote(request_path) or "/"' in adapter
 
 
 def test_scanner_actionable_not_history_note_is_prominent_and_documented():
