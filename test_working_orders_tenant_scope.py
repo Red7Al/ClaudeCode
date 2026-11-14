@@ -153,6 +153,7 @@ def test_the_bridge_asked_as_another_login_does_not_inherit_the_job_skip_list(db
     import ig_shim
     from hvf_web import order_bridge
     monkeypatch.setattr(ig_shim, "get_open_positions", lambda: [])
+    monkeypatch.setattr(ig_shim, "get_working_orders", lambda: [])
     mine = set(_job_live_tickers(db, job_login))
     assert mine, f"{job_login} has no live rows, so this would prove nothing"
     for who in other_logins:
@@ -167,6 +168,7 @@ def test_the_bridge_still_protects_the_job_accounts_own_orders(db, monkeypatch, 
     import ig_shim
     from hvf_web import order_bridge
     monkeypatch.setattr(ig_shim, "get_open_positions", lambda: [])
+    monkeypatch.setattr(ig_shim, "get_working_orders", lambda: [])
     mine = set(_job_live_tickers(db, job_login))
     assert mine, f"{job_login} has no live rows, so this would prove nothing"
     missing = mine - order_bridge._already_working()

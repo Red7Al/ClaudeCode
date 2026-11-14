@@ -2663,19 +2663,60 @@ def get_working_orders() -> list:
         raise
 
 
-def find_live_working_order(epic: str, direction: str, level: float):
-    """The IG working order for this epic + direction at this level, or None. Owner 2026-11-14: before any
-    re-attempt, or after an unconfirmed request, check the order is not already there. Raises if IG cannot be
-    read -- the caller must then say the state is UNKNOWN, never 'not placed'."""
+def _same_size(ig_size, size) -> bool:
+    """IG's recorded size equals ours. A size we were not given, or IG did not report, does not rule a match out."""
+    try:
+        return size is None or ig_size is None or abs(float(ig_size) - float(size)) <= max(abs(float(size)) * 1e-6, 1e-9)
+    except (TypeError, ValueError):
+        return False
+
+
+def find_live_working_order(epic: str, direction: str, level: float, size=None):
+    """The IG working order for this epic + direction at this level (and size, when given), or None. Owner
+    2026-11-14: before any re-attempt, or after an unconfirmed request, check the order is not already there.
+    Raises if IG cannot be read -- the caller must then say the state is UNKNOWN, never 'not placed'."""
     for wo in get_working_orders():
         wod = wo.get("workingOrderData", {}) or {}
         try:
             same_level = abs(float(wod.get("orderLevel")) - float(level)) <= max(abs(float(level)) * 1e-4, 1e-9)
         except (TypeError, ValueError):
             continue
-        if wod.get("epic") == epic and str(wod.get("direction")).upper() == direction.upper() and same_level:
+        if (wod.get("epic") == epic and str(wod.get("direction")).upper() == direction.upper()
+                and same_level and _same_size(wod.get("orderSize"), size)):
             return wod
     return None
+
+
+def check_ig_for_order(epic: str, direction: str, level: float, size=None):
+    """Ask IG whether it already holds this order. Returns (state, record): LIVE_ORDER (a working order),
+    LIVE_POSITION (it already filled -- an open position, same epic, direction and size), ABSENT (both lists read
+    and neither has it) or UNKNOWN (record = the cause: IG could not be read, so nothing is proven either way).
+    Owner 2026-11-14: never send an order again without checking it is not already there."""
+    try:
+        wod = find_live_working_order(epic, direction, level, size)
+        if wod:
+            return "LIVE_ORDER", wod
+        for p in get_open_positions():
+            pos, mkt = p.get("position", {}) or {}, p.get("market", {}) or {}
+            if (mkt.get("epic") == epic and str(pos.get("direction")).upper() == direction.upper()
+                    and _same_size(pos.get("size"), size)):
+                return "LIVE_POSITION", pos
+        return "ABSENT", None
+    except Exception as e:
+        return "UNKNOWN", f"{type(e).__name__}: {e}"
+
+
+def _deal_recorded(deal_id) -> bool:
+    """Is this IG deal id already a working_orders row? Used so an adopted order is never written twice."""
+    try:
+        db = get_db()
+        try:
+            return bool(db.run("select 1 from working_orders where deal_id = :d limit 1", d=deal_id))
+        finally:
+            db.close()
+    except Exception as e:
+        log.warning(f"_deal_recorded({deal_id}) lookup failed ({type(e).__name__}: {e}); treating as not recorded")
+        return False
 
 
 def _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction,
@@ -3124,86 +3165,106 @@ def place_working_order(
              + f"current={current} goodTill={body['goodTillDate']}")
 
     deal_ref = None
-    try:
-        resp     = session.post("/workingorders/otc", body=body, version="2")
-        deal_ref = resp.get("dealReference")
-        if not deal_ref:
-            log.error(f"No deal reference returned for working order: {resp}")
-            try:
-                from notify import alert_missed_trade
-                alert_missed_trade(ticker, direction,
-                                   "[working order] IG returned no deal reference", signal_summary)
-            except Exception:
-                pass
-            return None
 
-        time.sleep(1)
-        confirm = session.get(f"/confirms/{deal_ref}", version="1")
-        status  = confirm.get("dealStatus")
-        deal_id = confirm.get("dealId")
-
-        if status != "ACCEPTED":
-            reason_code = confirm.get("reason", "UNKNOWN")
-            log.error(f"Working order rejected: {status} — {reason_code}")
-            try:
-                from notify import alert_missed_trade
-                alert_missed_trade(ticker, direction,
-                                   f"[working order] IG rejected the pending order: {reason_code}",
-                                   signal_summary)
-            except Exception:
-                pass
-            return None
-
-        log.info(f"Working order confirmed: {deal_id} ({ticker} {direction} {otype} @ {entry_level})")
-
-        _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction,
-                                 size, entry_level, stop_level, limit_level, otype,
-                                 hvf_type, good_till, False, session_name, signal_summary,
-                                 lwr_owner_login=lwr_owner_login, lwr_account_fingerprint=lwr_account_fingerprint)
-
-        return {"deal_id": deal_id, "deal_ref": deal_ref, "level": entry_level,
-                "stop_level": stop_level, "limit_level": limit_level, "otype": otype,
-                "good_till": body["goodTillDate"], "working_order": True, "updated": False,
-                "current_price": current}
-
-    except requests.HTTPError as e:
-        log.error(f"IG API error placing working order: {e.response.status_code} — {e.response.text}")
-        try:
-            from notify import alert_missed_trade
-            alert_missed_trade(ticker, direction,
-                               f"[working order] IG API error {e.response.status_code}: "
-                               f"{e.response.text[:160]}", signal_summary)
-        except Exception:
-            pass
-        return None
-    except Exception as e:
-        # Timeout / dropped connection / bad reply: IG may or may not hold the order. NEVER retry blind (owner
-        # 2026-11-14): ask IG, then say exactly which of three things is true.
+    def _uncertain(e):
+        """The request may or may not have reached IG (timeout, 5xx, no deal reference, confirmation unreadable).
+        Never retry blind (owner 2026-11-14): ask IG, then email which of four things is true."""
         cause = f"{type(e).__name__}: {e}"
-        log.error(f"Working order for {ticker}: request failed after/while sending -- {cause}")
-        try:
-            live = find_live_working_order(epic, direction, entry_level)
-        except Exception as e2:
-            live, state = None, (f"UNKNOWN -- the request failed ({cause}) and IG's order list could not be read "
-                                 f"({type(e2).__name__}: {e2}); check IG before any retry")
+        resp_ = getattr(e, "response", None)
+        if resp_ is not None:                   # an HTTPError's own text is often empty: say what IG answered
+            cause = f"{type(e).__name__}: IG answered HTTP {getattr(resp_, 'status_code', '?')} {(getattr(resp_, 'text', '') or '')[:160]}".strip()
+        log.error(f"Working order for {ticker}: result unconfirmed -- {cause}")
+        st, rec = check_ig_for_order(epic, direction, entry_level, size)
+        if st == "LIVE_ORDER":
+            state = (f"LIVE AT IG (deal {rec.get('dealId')}) -- the request failed ({cause}) but IG holds the order; "
+                     f"recorded, NOT retried")
+        elif st == "LIVE_POSITION":
+            state = (f"LIVE AT IG (deal {rec.get('dealId')}) -- the request failed ({cause}) and the order has already "
+                     f"filled as an open position; NOT retried")
+        elif st == "ABSENT":
+            state = f"NOT PLACED -- the request failed ({cause}) and IG holds no such order or position; safe to retry"
         else:
-            state = (f"LIVE AT IG (deal {live.get('dealId')}) -- the request failed ({cause}) but IG holds the order; "
-                     f"recorded, NOT retried") if live else                     f"NOT PLACED -- the request failed ({cause}) and IG holds no such order; safe to retry"
+            state = f"UNKNOWN -- the request failed ({cause}) and IG could not be read ({rec}); check IG before any retry"
         try:
             from notify import alert_missed_trade
             alert_missed_trade(ticker, direction, f"[working order] {state}", signal_summary, email=True)
         except Exception as e3:
             log.warning(f"Working order {ticker}: alert was NOT sent: {type(e3).__name__}: {e3}")
-        if live:
-            _log_working_order_to_db(deal_ref, live.get("dealId"), user_id, ticker, epic, direction,
+        if st not in ("LIVE_ORDER", "LIVE_POSITION"):
+            return None
+        live_id = rec.get("dealId")
+        if st == "LIVE_ORDER" and not _deal_recorded(live_id):
+            _log_working_order_to_db(deal_ref, live_id, user_id, ticker, epic, direction,
                                      size, entry_level, stop_level, limit_level, otype,
                                      hvf_type, good_till, False, session_name, signal_summary,
                                      lwr_owner_login=lwr_owner_login, lwr_account_fingerprint=lwr_account_fingerprint)
-            return {"deal_id": live.get("dealId"), "deal_ref": deal_ref, "level": entry_level,
-                    "stop_level": stop_level, "limit_level": limit_level, "otype": otype,
-                    "good_till": body["goodTillDate"], "working_order": True, "updated": False,
-                    "current_price": current, "adopted": True}
+        return {"deal_id": live_id, "deal_ref": deal_ref, "level": entry_level,
+                "stop_level": stop_level, "limit_level": limit_level, "otype": otype,
+                "good_till": body["goodTillDate"], "working_order": True, "updated": False,
+                "current_price": current, "adopted": True}
+
+    try:
+        resp = session.post("/workingorders/otc", body=body, version="2")
+    except requests.HTTPError as e:
+        code = getattr(e.response, "status_code", None)
+        if code is None or code >= 500:
+            return _uncertain(e)            # IG may have accepted it before the gateway failed
+        text = (getattr(e.response, "text", "") or "")[:160]
+        log.error(f"IG API error placing working order: {code} — {text}")   # a 4xx is IG's own answer: not placed
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction, f"[working order] IG API error {code}: {text}", signal_summary)
+        except Exception as e3:
+            log.warning(f"Working order {ticker}: alert was NOT sent: {type(e3).__name__}: {e3}")
         return None
+    except Exception as e:
+        return _uncertain(e)
+
+    deal_ref = resp.get("dealReference")
+    if not deal_ref:
+        return _uncertain(RuntimeError(f"IG returned no deal reference: {resp}"))
+    try:
+        time.sleep(1)
+        confirm = session.get(f"/confirms/{deal_ref}", version="1")
+    except Exception as e:
+        return _uncertain(e)
+    status  = confirm.get("dealStatus")
+    deal_id = confirm.get("dealId")
+
+    if status != "ACCEPTED":
+        reason_code = confirm.get("reason", "UNKNOWN")
+        log.error(f"Working order rejected: {status} — {reason_code}")
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction,
+                               f"[working order] IG rejected the pending order: {reason_code}",
+                               signal_summary)
+        except Exception as e3:
+            log.warning(f"Working order {ticker}: alert was NOT sent: {type(e3).__name__}: {e3}")
+        return None
+
+    log.info(f"Working order confirmed: {deal_id} ({ticker} {direction} {otype} @ {entry_level})")
+    try:
+        _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction,
+                                 size, entry_level, stop_level, limit_level, otype,
+                                 hvf_type, good_till, False, session_name, signal_summary,
+                                 lwr_owner_login=lwr_owner_login, lwr_account_fingerprint=lwr_account_fingerprint)
+    except Exception as e:
+        # IG holds the order; only OUR record failed. Say so, and never write the row twice.
+        cause = f"{type(e).__name__}: {e}"
+        log.error(f"Working order {ticker}: IG holds deal {deal_id} but the record was NOT written -- {cause}")
+        try:
+            from notify import alert_missed_trade
+            alert_missed_trade(ticker, direction,
+                               f"[working order] LIVE AT IG (deal {deal_id}) -- IG accepted it but our record was NOT "
+                               f"written ({cause}); NOT retried", signal_summary, email=True)
+        except Exception as e3:
+            log.warning(f"Working order {ticker}: alert was NOT sent: {type(e3).__name__}: {e3}")
+
+    return {"deal_id": deal_id, "deal_ref": deal_ref, "level": entry_level,
+            "stop_level": stop_level, "limit_level": limit_level, "otype": otype,
+            "good_till": body["goodTillDate"], "working_order": True, "updated": False,
+            "current_price": current}
 
 
 def update_working_order(deal_id: str, ticker: str, direction: str,

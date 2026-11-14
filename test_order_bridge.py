@@ -39,6 +39,8 @@ def _stub_db(monkeypatch, wo_rows, epic_rows):
             pass
 
     monkeypatch.setattr("db_pool.get_db", lambda: _Db(), raising=False)
+    import ig_shim
+    monkeypatch.setattr(ig_shim, "get_working_orders", lambda: [])   # IG's own list; tests may not contact IG
 
 
 def test_an_instrument_already_held_is_not_ordered_again(monkeypatch):
@@ -78,3 +80,31 @@ def test_a_position_whose_epic_is_unknown_is_not_silently_dropped_from_the_db_ha
     monkeypatch.setattr(ig_shim, "get_open_positions", lambda: [{"market": {"epic": "XX.D.NOPE.IP"}}])
 
     assert order_bridge._already_working() == {"PENDING.L"}
+
+
+# ---- 2026-11-14: the bridge asks IG itself for working orders before placing (an order IG holds that our table never recorded) ----
+def test_an_order_ig_holds_that_our_table_does_not_show_is_not_ordered_again(monkeypatch):
+    from hvf_web import order_bridge
+    import ig_shim
+
+    _stub_db(monkeypatch, [], [("UNRECORDED.L", "KA.D.UNREC.DAILY.IP")])
+    monkeypatch.setattr(ig_shim, "get_open_positions", lambda: [])
+    monkeypatch.setattr(ig_shim, "get_working_orders",
+                        lambda: [{"workingOrderData": {"epic": "KA.D.UNREC.DAILY.IP", "dealId": "D1"}}])
+
+    assert "UNRECORDED.L" in order_bridge._already_working()
+
+
+def test_unreadable_ig_working_orders_refuse_the_pass_naming_the_cause(monkeypatch):
+    """Fails CLOSED: unlike the open-positions half, 'IG holds no order' is not proven when IG cannot be read."""
+    import pytest
+    from hvf_web import order_bridge
+    import ig_shim
+
+    _stub_db(monkeypatch, [], [])
+    monkeypatch.setattr(ig_shim, "get_open_positions", lambda: [])
+    monkeypatch.setattr(ig_shim, "get_working_orders", lambda: (_ for _ in ()).throw(ConnectionError("IG 403")))
+
+    with pytest.raises(order_bridge.IdentityUnresolved) as ei:
+        order_bridge._already_working()
+    assert "ConnectionError: IG 403" in str(ei.value) and "refusing to place" in str(ei.value)

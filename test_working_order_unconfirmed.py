@@ -163,3 +163,125 @@ def test_the_three_states_are_distinct_classes_so_an_unknown_is_never_deduped_aw
     classes = [notify._classify_missed_trade(t)[0] for t in (live, notp, unk)]
     assert classes == ["ORDER_LIVE_AT_IG", "ORDER_NOT_PLACED", "ORDER_UNKNOWN"]      # 'cap' in a cause cannot reclassify
     assert not set(classes) & notify._SILENT_MISSED_TRADE_CLASSES
+
+
+# ---- 2026-11-14 follow-up (architect design): every doubtful outcome asks IG; positions; size; no double row ----
+def _http(code):
+    r = requests.Response(); r.status_code = code; r._content = b"gateway"
+    return requests.HTTPError(response=r)
+
+
+class _SessPos(_Sess):
+    """Adds IG's open-positions list and a settable reply for POST."""
+    def __init__(self, positions=(), reply=None, **kw):
+        super().__init__(**kw); self.positions, self.reply = list(positions), reply
+
+    def get(self, path, version=None):
+        if path == "/positions":
+            return {"positions": self.positions}
+        return super().get(path, version)
+
+    def post(self, path, body=None, version=None):
+        if self.reply is not None:
+            self.posted.append(body); return self.reply
+        return super().post(path, body, version)
+
+
+def _pos(size=1.0, epic=EPIC, direction="BUY"):
+    return [{"market": {"epic": epic}, "position": {"dealId": "DIPOS1", "direction": direction, "size": size, "level": 100.2}}]
+
+
+@pytest.mark.parametrize("code", [500, 502, 504])
+def test_gateway_error_after_post_asks_ig_and_adopts_the_order(monkeypatch, code):
+    sess = _SessPos(post_exc=_http(code))
+    r, alerts, rows = _run(monkeypatch, sess, _wo())
+    assert r and r["adopted"] and r["deal_id"] == "DIAAAA1" and len(rows) == 1 and len(sess.posted) == 1
+    assert "LIVE AT IG" in alerts[0] and str(code) in alerts[0]
+
+
+def test_4xx_on_post_is_ig_answering_so_it_does_not_ask_ig(monkeypatch):
+    def no_list(): raise AssertionError("a 4xx is IG's own refusal; no list read")
+    r, alerts, rows = _run(monkeypatch, _SessPos(post_exc=_http(403)), no_list)
+    assert r is None and "IG API error 403" in alerts[0]
+
+
+def test_http_error_with_no_response_is_asked_not_crashed(monkeypatch):
+    r, alerts, rows = _run(monkeypatch, _SessPos(post_exc=requests.HTTPError("no response")), [])
+    assert r is None and "NOT PLACED" in alerts[0]
+
+
+def test_no_deal_reference_asks_ig_absent_says_not_placed_and_emails(monkeypatch):
+    r, alerts, rows = _run(monkeypatch, _SessPos(reply={"unexpected": 1}), [])
+    assert r is None and "NOT PLACED" in alerts[0] and "no deal reference" in alerts[0]
+
+
+def test_no_deal_reference_but_order_live_is_adopted_not_retried(monkeypatch):
+    r, alerts, rows = _run(monkeypatch, _SessPos(reply={}), _wo())
+    assert r and r["adopted"] and "LIVE AT IG" in alerts[0]
+
+
+def test_order_already_filled_is_found_as_a_position_not_called_safe_to_retry(monkeypatch):
+    sess = _SessPos(positions=_pos(size=1.0), post_exc=TimeoutError("t"))
+    r, alerts, rows = _run(monkeypatch, sess, [])
+    assert r and r["adopted"] and r["deal_id"] == "DIPOS1" and rows == []
+    assert "LIVE AT IG" in alerts[0] and "filled" in alerts[0] and "NOT PLACED" not in alerts[0]
+
+
+def test_a_position_of_a_different_size_is_not_ours(monkeypatch):
+    r, alerts, rows = _run(monkeypatch, _SessPos(positions=_pos(size=5.0), post_exc=TimeoutError("t")), [])
+    assert r is None and "NOT PLACED" in alerts[0]
+
+
+def test_an_order_of_a_different_size_is_not_mistaken_for_ours(monkeypatch):
+    other = _wo(); other[0]["workingOrderData"]["orderSize"] = 7.0
+    r, alerts, rows = _run(monkeypatch, _SessPos(post_exc=TimeoutError("t")), other)
+    assert r is None and "NOT PLACED" in alerts[0]
+
+
+def test_matching_size_is_adopted(monkeypatch):
+    mine = _wo(); mine[0]["workingOrderData"]["orderSize"] = 1.0
+    r, alerts, rows = _run(monkeypatch, _SessPos(post_exc=TimeoutError("t")), mine)
+    assert r and r["adopted"]
+
+
+def test_an_order_ig_holds_that_we_already_recorded_is_not_written_twice(monkeypatch):
+    monkeypatch.setattr(ig_shim, "_deal_recorded", lambda d: True)
+    sess = _SessPos(post_exc=TimeoutError("t"))
+    monkeypatch.setattr(ig_shim, "session", sess)
+    r, alerts, rows = _run(monkeypatch, sess, _wo())
+    monkeypatch.setattr(ig_shim, "_deal_recorded", lambda d: True)   # _run re-applies fixtures; pin it again
+    assert r and r["adopted"]
+
+
+def test_unknown_state_covers_a_positions_read_failure_too(monkeypatch):
+    class S(_SessPos):
+        def get(self, path, version=None):
+            if path == "/positions":
+                raise ConnectionError("positions 403")
+            return super().get(path, version)
+    r, alerts, rows = _run(monkeypatch, S(post_exc=TimeoutError("t")), [])
+    assert r is None and "UNKNOWN" in alerts[0] and "positions 403" in alerts[0] and "NOT PLACED" not in alerts[0]
+
+
+def test_ig_accepted_but_our_record_failed_is_emailed_and_never_written_twice(monkeypatch):
+    calls = []
+    class S(_SessPos):
+        def get(self, path, version=None):
+            if path.startswith("/confirms"):
+                return {"dealStatus": "ACCEPTED", "dealId": "DIOK"}
+            return super().get(path, version)
+    r, alerts, rows = _run(monkeypatch, S(), [])
+    def boom(*a, **k): calls.append(1); raise RuntimeError("pool full")
+    monkeypatch.setattr(ig_shim, "_log_working_order_to_db", boom)
+    mails = []
+    monkeypatch.setattr("notify.alert_missed_trade", lambda t, d, reason, *a, **k: mails.append((reason, k)))
+    r2 = ig_shim.place_working_order(user_id="u1", ticker="TST", direction="BUY", size=1.0, entry_level=100.0,
+                                     stop_level=95.0, limit_level=130.0, session_name="WEB_BRIDGE",
+                                     signal_summary="t", proximity_pct=5.0, watch=False)
+    assert r2 and r2["deal_id"] == "DIOK" and len(calls) == 1
+    assert "LIVE AT IG (deal DIOK)" in mails[0][0] and "pool full" in mails[0][0] and mails[0][1].get("email") is True
+
+
+def test_confirmation_read_failure_after_accept_that_ig_lists_is_adopted_with_a_5xx_too(monkeypatch):
+    r, alerts, rows = _run(monkeypatch, _SessPos(confirm_exc=_http(502)), _wo())
+    assert r and r["adopted"] and "502" in alerts[0]

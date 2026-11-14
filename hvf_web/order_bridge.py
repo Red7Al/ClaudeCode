@@ -214,6 +214,21 @@ def _already_working(owner: str = None) -> set:
         # is skipped and the next one picks the setups up. The open-position half below still fails open by
         # design, because it is a SECOND, independent line of defence rather than the primary one.
         raise IdentityUnresolved(f"working_orders lookup failed ({e}); refusing to place this pass")
+    # IG's own working orders (owner 2026-11-14: never send an order again without checking it is not already there).
+    # Our table misses an order IG accepted but whose row was never written (IG 5xx after accepting, no deal
+    # reference, a failed insert), and the next pass would place it a second time. Fails CLOSED, like the table half:
+    # when IG cannot be read, "no working order" is not proven.
+    try:
+        import ig_shim
+        wos = ig_shim.get_working_orders() or []
+        w_epic2tk = ig_shim.tickers_for_epics((w.get("workingOrderData") or {}).get("epic") for w in wos)
+        at_ig = {w_epic2tk[e] for e in ((w.get("workingOrderData") or {}).get("epic") for w in wos) if e in w_epic2tk}
+        if at_ig:
+            log.info(f"bridge: skipping {len(at_ig)} instrument(s) IG already holds a working order for")
+        skip |= at_ig
+    except Exception as e:
+        raise IdentityUnresolved(f"IG working orders could not be read ({type(e).__name__}: {e}); refusing to place "
+                                 f"this pass -- IG may already hold an order our table does not show")
     # Open positions, resolved to tickers through the same epic_lookup the account screens use.
     try:
         import ig_shim
