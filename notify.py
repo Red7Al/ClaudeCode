@@ -209,7 +209,9 @@ def _send(channel: str, blocks: list, email: bool = None) -> bool:
     if (channel == "alerts") if email is None else email:
         try:
             title, text = _blocks_text(blocks)
-            _email_alert(f"Alert: {title or 'trading system'}"[:200], text)
+            who = " ".join(l.split(": ", 1)[1].strip() for l in text.splitlines()[:2] if ": " in l)[:80]
+            _email_alert(f"Alert: {title or 'trading system'} {who}".strip()[:200], text,
+                         bucket="channel_alert_emails", cap=CHANNEL_ALERT_EMAILS_PER_DAY)
         except Exception as e:
             log.error(f"alert email failed ({channel}): {type(e).__name__}: {e}")
     if not slack_enabled(channel):
@@ -1209,10 +1211,12 @@ def alert_macro_gate_failed(reason: str, vix: float, yield_spread: float, sessio
     _send("alerts", blocks)    # emailed too, by _send
 
 
+CHANNEL_ALERT_EMAILS_PER_DAY = 20   # the Slack-origin alerts have their OWN count, so a noisy one can never use up the
+#                                    system-error allowance below (test specialist 2026-11-14)
 ALERT_EMAILS_PER_DAY = 10     # owner 2026-10-27: "140 is way too many" -- a hard ceiling across every job
 
 
-def _email_alert(subject: str, text: str) -> bool:
+def _email_alert(subject: str, text: str, bucket: str = "alert_emails", cap: int = None) -> bool:
     """Email a system alert (2026-10-27): Slack is not used (owner 2026-10-08), so alerts that only posted there reached
     nobody. The same alert is emailed once per UTC day and at most ALERT_EMAILS_PER_DAY alerts a day in all, counted in
     app_config (shared by every job, like the IG login pause). MEASURED 2026-10-27: no alert fired in 24 recent runs of
@@ -1224,7 +1228,8 @@ def _email_alert(subject: str, text: str) -> bool:
     import hashlib
     import json
     import config_store
-    key = f"alert_emails:{datetime.now(timezone.utc):%Y-%m-%d}"
+    cap = ALERT_EMAILS_PER_DAY if cap is None else cap
+    key = f"{bucket}:{datetime.now(timezone.utc):%Y-%m-%d}"
     sig = hashlib.sha1(subject.encode("utf-8")).hexdigest()[:12]
     try:
         sent = (json.loads(config_store.get_value(key, "") or "{}")).get("sent") or []
@@ -1233,8 +1238,8 @@ def _email_alert(subject: str, text: str) -> bool:
     if sig in sent:
         log.info(f"alert already emailed today, not repeated: {subject}")
         return False
-    if len(sent) >= ALERT_EMAILS_PER_DAY:
-        log.warning(f"{ALERT_EMAILS_PER_DAY} alert emails already sent today -- not emailed: {subject}")
+    if len(sent) >= cap:
+        log.warning(f"{cap} {bucket} emails already sent today -- not emailed: {subject}")
         return False
     if not config_store.set_value(key, json.dumps({"sent": sent + [sig]}), updated_by="notify"):
         log.error(f"alert email count could not be recorded -- not emailed: {subject}")
