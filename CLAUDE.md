@@ -200,6 +200,11 @@ workflow file changes, put today's date in its `name:`.
   enhancements can wait"** (with the usual specialist SHIP, clean suite and live proof). Any other fault found is
   recorded in `ChangeRequests/`, not fixed.
 
+- **Never send an order to IG again without first checking it is not already there -- owner 2026-11-14** ("on a retry -
+  check it is not there first"). A timeout after the order request leaves it unknown whether IG holds the order; a blind
+  retry can double the risk. Any retry or re-attempt of an order query IG's working orders (and positions) for that
+  instrument, direction and level first; if it is there, record it and say so; place only when it is absent. Read-only
+  IG calls may retry freely.
 - **`WEB_BRIDGE` is the only enabled execution source.** Bridge changes are production trading changes.
 - **ONE trigger calculation, used by everything -- owner 2026-10-31: "never was more than one calculation needed".**
   The Scanner Report's trigger set (`server._open_trigger_setups` / `_report_setup`, judged on trigger-date values) is

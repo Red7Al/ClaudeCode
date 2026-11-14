@@ -214,6 +214,9 @@ def test_only_the_post_limit_caller_mails_and_never_the_manual_button():
         lines = "\n".join(l for l in f.read_text(encoding="utf8", errors="ignore").splitlines()
                           if "alert_missed_trade" in l or "recipients=_profile_recipients" in l)
         on = len(re.findall(r"email\s*=\s*(?:True|\(session_name)", lines))
-        assert on == (1 if f.name == "ig_shim.py" else 0), f.name
+        # ig_shim has TWO mailers: the post-limit miss (P-04) and, owner 2026-11-14, a placement whose request failed
+        # after it may have reached IG (place_working_order: LIVE AT IG / NOT PLACED / UNKNOWN) -- mailed for every
+        # session, including the manual button, because money may be live at IG.
+        assert on == (2 if f.name == "ig_shim.py" else 0), f.name
     # WEB_MANUAL ("Create an order") is shown the reason on the page: it is not also mailed.
     assert 'email=(session_name != "WEB_MANUAL")' in pathlib.Path("ig_shim.py").read_text(encoding="utf8")

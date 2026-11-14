@@ -837,6 +837,14 @@ def alert_circuit_breaker(user: str, ticker: str, reason: str):
 # and why the trade was blocked) before saying what to do about it.
 _MISSED_TRADE_CLASSES = [
     # (class, substring matched in reason, corrective action)
+    # Order request failed AFTER it may have reached IG (owner 2026-11-14): three distinct classes, listed FIRST so a word
+    # in the quoted cause can never reclassify them, and so one state's alert never dedupes away another's escalation.
+    ("ORDER_LIVE_AT_IG", "live at ig (deal",
+     "IG holds the order and it has been recorded; nothing to do unless the details look wrong."),
+    ("ORDER_NOT_PLACED", "not placed -- the request failed",
+     "IG holds no such order. The next Order Bridge pass will try again."),
+    ("ORDER_UNKNOWN", "unknown -- the request failed",
+     "IG's order list could not be read: open IG and check for the order BEFORE any retry."),
     ("TIGHT_STOP", "minimum 0.5% for instruments",
      "The pattern dictates both levels: entry is its last swing high (H3), stop is "
      "its last swing low (L3) — and here the gap between them is under 0.5% of the "
