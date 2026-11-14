@@ -150,19 +150,24 @@ def slack_enabled(channel: str) -> bool:
     """PER-CHANNEL Slack on/off switch (user 2026-08-01): each webhook (alerts / signals / trades / daily /
     weekly / orders / twitter) can be silenced independently. Read from the shared app_config key
     'slack_ch_<channel>' (config_store) so it applies to BOTH the web server and the GitHub Actions
-    monitors. Cached 30s per channel; fail-open (default ON) so a config read error never silences alerts."""
+    monitors. Cached 30s per channel.
+
+    OFF unless explicitly switched on (owner 2026-11-14: "no alerts should currently use slack"; the code stays because
+    it may be used in future). Fail-CLOSED: an unset key or a config read error is OFF, never ON. Measured the same day:
+    'alerts' was unset and so ON, with a webhook configured -- missed-trade alerts were posting to Slack."""
     import time as _t
     now = _t.time()
     c = _SLACK_FLAGS.get(channel)
     if c and now - c[0] < 30:
         return c[1]
-    on = True
+    on = False
     try:
         import config_store as _cs
-        v = str(_cs.get_value(f"slack_ch_{channel}", "1")).strip().lower()
-        on = v not in ("0", "false", "off", "no")
-    except Exception:
-        on = True
+        v = str(_cs.get_value(f"slack_ch_{channel}", "0")).strip().lower()
+        on = v in ("1", "true", "on", "yes")
+    except Exception as e:
+        log.warning(f"slack_enabled({channel}): config unreadable ({type(e).__name__}: {e}); Slack stays OFF")
+        on = False
     _SLACK_FLAGS[channel] = (now, on)
     return on
 
@@ -934,8 +939,26 @@ def _classify_missed_trade(reason: str):
 _EMAILED_NO_DB = set()
 
 
+def format_order_details(o: dict) -> str:
+    """Everything needed to place the order by hand on IG (owner 2026-11-14: an alert email is the user's chance to
+    place the order, so it carries the order). One shared formatter; a missing value reads 'not set', never blank."""
+    def v(k, none="not set"):
+        x = o.get(k)
+        return none if x in (None, "") else str(x)
+    rows = [("Instrument", f"{v('ticker')}  (IG epic {v('epic')})"),
+            ("Direction", v("direction")),
+            ("Order type", v("otype")),
+            ("Size", v("size", "not calculated -- see the reason above")),
+            ("Entry (order level)", v("entry")),
+            ("Stop level", v("stop")),
+            ("Take-profit (limit)", v("limit", "none -- let winners run"
+                                      + (f" (target {o['target']})" if o.get("target") else ""))),
+            ("Good till", v("good_till"))]
+    return "ORDER DETAILS (to place it yourself on IG):\n" + "\n".join(f"  {k}: {x}" for k, x in rows)
+
+
 def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary: str = "",
-                       silent: bool = False, recipients=None, email: bool = False):
+                       silent: bool = False, recipients=None, email: bool = False, order: dict = None):
     """
     A TRADEABLE signal fired but the trade was NOT placed — surface it to #alerts
     so a missed opportunity is never silent. (User directive 2026-06-09.)
@@ -1012,7 +1035,8 @@ def alert_missed_trade(ticker: str, direction: str, reason: str, signal_summary:
             send_simple_email(
                 f"Order NOT placed: {ticker} {direction} ({'risk cap' if reason_class == 'RISK_CAP' else reason_class})",
                 f"{ticker} {direction} triggered and passed your limits, but no order was placed."
-                f"\n\n{reason}\n",
+                f"\n\n{reason}\n\nWhat to do: {corrective}\n"
+                + (f"\n{format_order_details(order)}\n" if order else ""),
                 recipients=recipients)
         except Exception as e:
             log.warning(f"risk-cap miss email failed for {ticker}: {e}")

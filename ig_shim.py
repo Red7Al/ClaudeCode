@@ -2770,6 +2770,8 @@ def _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction
             db.close()
     except Exception as ex:
         log.error(f"Failed to log working order to Supabase: {ex}")
+        return f"{type(ex).__name__}: {ex}"      # the cause, so the caller can tell the user; None means it was written
+    return None
 
 
 def _set_working_order_status(deal_id: str, status: str, fill_deal_id: str = None,
@@ -2843,6 +2845,7 @@ def place_working_order(
     let_run:        bool = False,   # omit the take-profit so a winner is not capped at target (see below)
     lwr_owner_login: str = None,    # immutable web-login binding for a future owner-scoped LWR manager
     watch:          bool = True,    # False: never defer as WATCHING -- "Create an order" goes to IG now
+    recipients:     list = None,    # the account holder's address for this order's alert emails (None -> default list)
 ) -> Optional[dict]:
     """
     Place (or amend) a PENDING entry order on IG at the HVF level.
@@ -3165,6 +3168,11 @@ def place_working_order(
              + f"current={current} goodTill={body['goodTillDate']}")
 
     deal_ref = None
+    # Every failure email carries the order so the user can place it by hand (owner 2026-11-14), and goes to the
+    # holder of the IG account the order was for (owner 2026-11-14: "email recipients must be the account holder").
+    order = {"ticker": ticker, "epic": epic, "direction": direction, "otype": otype, "size": size,
+             "entry": entry_level, "stop": stop_level, "limit": body.get("limitLevel"), "target": limit_level,
+             "good_till": body["goodTillDate"]}
 
     def _uncertain(e):
         """The request may or may not have reached IG (timeout, 5xx, no deal reference, confirmation unreadable).
@@ -3185,19 +3193,26 @@ def place_working_order(
             state = f"NOT PLACED -- the request failed ({cause}) and IG holds no such order or position; safe to retry"
         else:
             state = f"UNKNOWN -- the request failed ({cause}) and IG could not be read ({rec}); check IG before any retry"
+        live_id = rec.get("dealId") if isinstance(rec, dict) else None
+        if st == "LIVE_ORDER" and not _deal_recorded(live_id):
+            try:
+                rec_err = _log_working_order_to_db(deal_ref, live_id, user_id, ticker, epic, direction,
+                                                   size, entry_level, stop_level, limit_level, otype,
+                                                   hvf_type, good_till, False, session_name, signal_summary,
+                                                   lwr_owner_login=lwr_owner_login,
+                                                   lwr_account_fingerprint=lwr_account_fingerprint)
+            except Exception as e4:
+                rec_err = f"{type(e4).__name__}: {e4}"
+            if rec_err:
+                state = state.replace("recorded, NOT retried", f"our record was NOT written ({rec_err}), NOT retried")
         try:
             from notify import alert_missed_trade
-            alert_missed_trade(ticker, direction, f"[working order] {state}", signal_summary, email=True)
+            alert_missed_trade(ticker, direction, f"[working order] {state}", signal_summary, email=True,
+                               recipients=recipients, order=order)
         except Exception as e3:
             log.warning(f"Working order {ticker}: alert was NOT sent: {type(e3).__name__}: {e3}")
         if st not in ("LIVE_ORDER", "LIVE_POSITION"):
             return None
-        live_id = rec.get("dealId")
-        if st == "LIVE_ORDER" and not _deal_recorded(live_id):
-            _log_working_order_to_db(deal_ref, live_id, user_id, ticker, epic, direction,
-                                     size, entry_level, stop_level, limit_level, otype,
-                                     hvf_type, good_till, False, session_name, signal_summary,
-                                     lwr_owner_login=lwr_owner_login, lwr_account_fingerprint=lwr_account_fingerprint)
         return {"deal_id": live_id, "deal_ref": deal_ref, "level": entry_level,
                 "stop_level": stop_level, "limit_level": limit_level, "otype": otype,
                 "good_till": body["goodTillDate"], "working_order": True, "updated": False,
@@ -3213,7 +3228,8 @@ def place_working_order(
         log.error(f"IG API error placing working order: {code} — {text}")   # a 4xx is IG's own answer: not placed
         try:
             from notify import alert_missed_trade
-            alert_missed_trade(ticker, direction, f"[working order] IG API error {code}: {text}", signal_summary)
+            alert_missed_trade(ticker, direction, f"[working order] IG API error {code}: {text}", signal_summary,
+                               email=True, recipients=recipients, order=order)
         except Exception as e3:
             log.warning(f"Working order {ticker}: alert was NOT sent: {type(e3).__name__}: {e3}")
         return None
@@ -3238,26 +3254,28 @@ def place_working_order(
             from notify import alert_missed_trade
             alert_missed_trade(ticker, direction,
                                f"[working order] IG rejected the pending order: {reason_code}",
-                               signal_summary)
+                               signal_summary, email=True, recipients=recipients, order=order)
         except Exception as e3:
             log.warning(f"Working order {ticker}: alert was NOT sent: {type(e3).__name__}: {e3}")
         return None
 
     log.info(f"Working order confirmed: {deal_id} ({ticker} {direction} {otype} @ {entry_level})")
     try:
-        _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction,
-                                 size, entry_level, stop_level, limit_level, otype,
-                                 hvf_type, good_till, False, session_name, signal_summary,
-                                 lwr_owner_login=lwr_owner_login, lwr_account_fingerprint=lwr_account_fingerprint)
+        cause = _log_working_order_to_db(deal_ref, deal_id, user_id, ticker, epic, direction,
+                                         size, entry_level, stop_level, limit_level, otype,
+                                         hvf_type, good_till, False, session_name, signal_summary,
+                                         lwr_owner_login=lwr_owner_login, lwr_account_fingerprint=lwr_account_fingerprint)
     except Exception as e:
-        # IG holds the order; only OUR record failed. Say so, and never write the row twice.
         cause = f"{type(e).__name__}: {e}"
+    if cause:
+        # IG holds the order; only OUR record failed. Say so, and never write the row twice.
         log.error(f"Working order {ticker}: IG holds deal {deal_id} but the record was NOT written -- {cause}")
         try:
             from notify import alert_missed_trade
             alert_missed_trade(ticker, direction,
                                f"[working order] LIVE AT IG (deal {deal_id}) -- IG accepted it but our record was NOT "
-                               f"written ({cause}); NOT retried", signal_summary, email=True)
+                               f"written ({cause}); NOT retried", signal_summary, email=True,
+                               recipients=recipients, order=order)
         except Exception as e3:
             log.warning(f"Working order {ticker}: alert was NOT sent: {type(e3).__name__}: {e3}")
 
@@ -4008,7 +4026,10 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         try:
             from notify import alert_missed_trade
             alert_missed_trade(ticker, direction, _reason, str(sig.get("primaries_fired") or ""),
-                               recipients=_profile_recipients(profile), email=(session_name != "WEB_MANUAL"))
+                               recipients=_profile_recipients(profile), email=(session_name != "WEB_MANUAL"),
+                               order={"ticker": ticker, "epic": epic, "direction": direction, "otype": "STOP/LIMIT",
+                                      "size": size if size > 0 else None, "entry": entry, "stop": stop,
+                                      "limit": None, "target": target})
         except Exception:
             pass
         return None
@@ -4022,6 +4043,7 @@ def place_hvf_order_from_sig(sig: dict, profile: dict, session_name: str,
         user_id=profile["user_id"], ticker=ticker, direction=direction, size=size,
         entry_level=entry, stop_level=stop, limit_level=target,
         session_name=session_name, signal_summary=signal_str,
+        recipients=_profile_recipients(profile),
         paper_trade=profile.get("paper_trade", False), hvf_type=hvf_type,
         # Per-user IG working-order lifespan (user 2026-08-01): the web place path carries the acting
         # user's own value; None here falls back to the shared config_store default (bridge / Actions).

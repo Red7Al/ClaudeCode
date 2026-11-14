@@ -207,16 +207,22 @@ def test_mail_failure_never_raises_into_the_order(monkeypatch):
 
 
 def test_only_the_post_limit_caller_mails_and_never_the_manual_button():
-    import re, pathlib
+    import ast, pathlib
+    counts = {}
     for f in pathlib.Path(".").glob("*.py"):
         if f.name.startswith("test_"):
             continue
-        lines = "\n".join(l for l in f.read_text(encoding="utf8", errors="ignore").splitlines()
-                          if "alert_missed_trade" in l or "recipients=_profile_recipients" in l)
-        on = len(re.findall(r"email\s*=\s*(?:True|\(session_name)", lines))
-        # ig_shim has TWO mailers: the post-limit miss (P-04) and, owner 2026-11-14, a placement whose request failed
-        # after it may have reached IG (place_working_order: LIVE AT IG / NOT PLACED / UNKNOWN) -- mailed for every
-        # session, including the manual button, because money may be live at IG.
-        assert on == (2 if f.name == "ig_shim.py" else 0), f.name
+        n = 0
+        for node in ast.walk(ast.parse(f.read_text(encoding="utf8", errors="ignore"))):
+            if isinstance(node, ast.Call) and getattr(node.func, "id", getattr(node.func, "attr", "")) == "alert_missed_trade":
+                for kw in node.keywords:
+                    if kw.arg == "email" and not (isinstance(kw.value, ast.Constant) and kw.value.value is False):
+                        n += 1
+        if n:
+            counts[f.name] = n
+    # ig_shim mails: the post-limit miss (P-04, not for the manual button) and, owner 2026-11-14, every failed order
+    # request in place_working_order (IG 4xx refusal, a rejection, the unconfirmed-outcome check, a failed record write): money may be live at IG, and
+    # the email carries the order so the user can place it. 1 + 4 = 5. Nothing else mails per occurrence.
+    assert counts == {"ig_shim.py": 5}, counts
     # WEB_MANUAL ("Create an order") is shown the reason on the page: it is not also mailed.
     assert 'email=(session_name != "WEB_MANUAL")' in pathlib.Path("ig_shim.py").read_text(encoding="utf8")

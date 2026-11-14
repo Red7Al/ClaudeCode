@@ -213,6 +213,15 @@ workflow file changes, put today's date in its `name:`.
   retry can double the risk. Any retry or re-attempt of an order query IG's working orders (and positions) for that
   instrument, direction and level first; if it is there, record it and say so; place only when it is absent. Read-only
   IG calls may retry freely.
+- **A failed-order alert is an EMAIL to the account holder that carries the order -- owner 2026-11-14** ("so long as an
+  alert email is sent to give the user a chance to place an order - include the details of the order that has not been
+  placed so the user can place it"; "email recipients must be the account holder for IG specific account alerts"; "slack
+  has not been used for so long"). Every email about an order that was not placed or is in doubt lists instrument, IG epic,
+  direction, type, size, entry, stop, take-profit and good-till (`notify.format_order_details`), and goes to the holder of
+  that IG account (`ig_shim._profile_recipients`), not the global list. An alert that only reaches Slack reaches nobody.
+  **The Slack code stays (it may be used in future) but nothing posts to it now -- owner 2026-11-14:** `notify.slack_enabled`
+  is OFF unless `slack_ch_<channel>` is explicitly on, and an unreadable config is OFF (measured that day: `alerts` was
+  unset, therefore ON, with a webhook configured). `test_slack_is_off.py` also fails any module that posts without asking it.
 - **`WEB_BRIDGE` is the only enabled execution source.** Bridge changes are production trading changes.
 - **ONE trigger calculation, used by everything -- owner 2026-10-31: "never was more than one calculation needed".**
   The Scanner Report's trigger set (`server._open_trigger_setups` / `_report_setup`, judged on trigger-date values) is

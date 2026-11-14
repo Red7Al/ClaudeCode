@@ -364,6 +364,10 @@ def test_slack_channels() -> list:
         if not url:
             results.append(warn(name, "NOT SET — webhook URL missing from environment"))
             continue
+        from notify import slack_enabled
+        if not slack_enabled(secret_name[len("SLACK_"):].lower()):
+            results.append(ok(name, "Slack channel switched off (not used) -- no probe sent"))
+            continue
         try:
             probe = {"text": f"🔬 Diagnostics probe — {ts} — {channel} webhook OK"}
             resp  = _requests.post(url, json=probe, timeout=10)
@@ -378,7 +382,8 @@ def test_slack_channels() -> list:
 
 def post_report(results: list, tickers: list):
     """Post test results to #claude-trading-alerts."""
-    if not SLACK_URL:
+    from notify import slack_enabled
+    if not SLACK_URL or not slack_enabled("alerts"):     # Slack is off unless switched on (owner 2026-11-14)
         # Fall back to stdout
         print(f"\n{'='*60}")
         print(f"Deployment Diagnostics — {datetime.now(timezone.utc).strftime('%d %b %Y %H:%M UTC')}")

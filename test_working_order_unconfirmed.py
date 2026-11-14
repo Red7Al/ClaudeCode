@@ -285,3 +285,64 @@ def test_ig_accepted_but_our_record_failed_is_emailed_and_never_written_twice(mo
 def test_confirmation_read_failure_after_accept_that_ig_lists_is_adopted_with_a_5xx_too(monkeypatch):
     r, alerts, rows = _run(monkeypatch, _SessPos(confirm_exc=_http(502)), _wo())
     assert r and r["adopted"] and "502" in alerts[0]
+
+
+# ---- 2026-11-14 owner: the alert email carries the order (so the user can place it) and goes to the account holder ----
+def _call(monkeypatch, sess, ig_orders, **extra):
+    seen = []
+    monkeypatch.setattr(ig_shim, "session", sess)
+    monkeypatch.setattr(ig_shim, "get_db", lambda: _Db())
+    monkeypatch.setattr(ig_shim.time, "sleep", lambda s: None)
+    monkeypatch.setattr(ig_shim, "_get_pending_working_order", lambda tk, uid: None)
+    monkeypatch.setattr(ig_shim, "get_epic", lambda tk: EPIC)
+    monkeypatch.setattr(ig_shim, "_log_working_order_to_db", lambda *a, **k: None)
+    monkeypatch.setattr(ig_shim, "get_working_orders", lambda: ig_orders)
+    monkeypatch.setattr("notify.alert_missed_trade", lambda t, d, reason, *a, **k: seen.append((reason, k)))
+    ig_shim.place_working_order(user_id="u1", ticker="TST", direction="BUY", size=1.5, entry_level=100.0,
+                                stop_level=95.0, limit_level=130.0, session_name="WEB_BRIDGE",
+                                signal_summary="t", proximity_pct=5.0, watch=False, **extra)
+    return seen
+
+
+class _Reject(_SessPos):
+    def get(self, path, version=None):
+        if path.startswith("/confirms"):
+            return {"dealStatus": "REJECTED", "reason": "MARKET_CLOSED"}
+        return super().get(path, version)
+
+
+@pytest.mark.parametrize("sess", [_SessPos(post_exc=TimeoutError("t")), _SessPos(post_exc=_http(403)), _Reject()])
+def test_every_failure_email_carries_the_order_and_goes_to_the_account_holder(monkeypatch, sess):
+    seen = _call(monkeypatch, sess, [], recipients=["holder@example.com"])
+    assert len(seen) == 1
+    reason, k = seen[0]
+    assert k.get("email") is True and k.get("recipients") == ["holder@example.com"]
+    o = k["order"]
+    assert (o["ticker"], o["epic"], o["direction"], o["size"], o["entry"], o["stop"], o["target"]) == \
+           ("TST", EPIC, "BUY", 1.5, 100.0, 95.0, 130.0) and o["good_till"]
+
+
+def test_the_email_body_lists_the_order_and_uses_the_given_recipients(monkeypatch):
+    import notify
+    sent = []
+    monkeypatch.setattr("trade_email.send_simple_email",
+                        lambda subj, text, html=None, recipients=None: sent.append((subj, text, recipients)) or True)
+    monkeypatch.setattr(notify, "_send", lambda *a, **k: None)
+    monkeypatch.setattr("db_pool.get_db", lambda: (_ for _ in ()).throw(RuntimeError("db down")))
+    notify._EMAILED_NO_DB.clear()
+    order = {"ticker": "AAPL", "epic": "UA.D.AAPL.DAILY.IP", "direction": "BUY", "otype": "STOP", "size": 0.5,
+             "entry": 201.5, "stop": 195.0, "limit": 220.0, "good_till": "2026/12/12 00:00:00"}
+    notify.alert_missed_trade("AAPL", "BUY", "[working order] NOT PLACED -- the request failed (X: y) and IG holds "
+                              "no such order or position; safe to retry", "", email=True,
+                              recipients=["holder@example.com"], order=order)
+    subj, text, rec = sent[0]
+    assert rec == ["holder@example.com"] and "ORDER DETAILS" in text
+    for want in ("AAPL", "UA.D.AAPL.DAILY.IP", "BUY", "STOP", "0.5", "201.5", "195.0", "220.0", "2026/12/12"):
+        assert want in text, want
+    assert "What to do:" in text
+
+
+def test_a_missing_value_reads_not_set_and_an_uncomputed_size_says_why():
+    import notify
+    t = notify.format_order_details({"ticker": "AAPL", "direction": "BUY", "entry": 10.0, "target": 12.0})
+    assert "Size: not calculated" in t and "Stop level: not set" in t and "let winners run (target 12.0)" in t
