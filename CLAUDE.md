@@ -56,6 +56,14 @@ speaking.** Every one had a single cheap command that would have prevented it.
   to make fully competent decisions without asking me over and again in emails. Why have a dog and bark myself?"**
   Make the engineering decision, prove it on real data, ship it, and tell him once with the result. Do not add
   emails to his inbox to check your work -- outcome checks report to the agent, who fixes what they find.
+- **Subject-matter experts (SMEs) are engaged, not improvised -- owner 2026-11-14** ("make sure we have a software architect
+  to help with group decisions"; "we should have UI, UX, testing and architect SME for the technology and quantitative
+  developer SME for the business side of the trading"). Definitions are in `.claude/agents/`: `architect` (every
+  cross-module design: error handling, the order path, shared helpers, alerts, schedules; prefers short procedural shared
+  functions over generated bulk), `ui-sme` and `ux-sme` (any page, table or email layout the owner reads), `test-specialist`
+  (rule 12), and `quant-dev` (anything that moves a trading number: triggers, sizing, stops, filters, replays, R and £).
+  Give the SME the code to read and the question, and act on its single recommendation. SMEs advise and review; the author
+  builds; none of them replaces proof (MEASURED/DERIVED/unproven) or the owner's decisions.
 - **Commit anything successfully tested.** Do not leave verified work waiting to be offered.
 - **If a change moves a number he reads, measure old vs new and tell him BEFORE shipping.**
 - **Record his decisions in the repository the moment he makes them — unprompted** (owner, 2026-10-21).
