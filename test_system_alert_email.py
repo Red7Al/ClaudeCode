@@ -42,15 +42,15 @@ def test_without_a_sender_nothing_is_sent_or_counted(wired, monkeypatch):
 
 
 def test_a_count_that_cannot_be_recorded_still_sends_once(wired, monkeypatch):
-    """Owner 2026-11-15: when the database is down the alert is sent anyway, once per subject per process."""
+    """Owner 2026-11-15 (option B): database down -> the alert is sent anyway, ONE email per process in total."""
     store, sent = wired
     import config_store
     monkeypatch.setattr(notify, "_ALERTED_NO_DB", set())
     monkeypatch.setattr(config_store, "set_value", lambda *a, **k: False)
     notify.alert_system_error("S", "c", "fault")
     notify.alert_system_error("S", "c", "fault")          # same alert again: not repeated
-    notify.alert_system_error("S", "c", "another fault")
-    assert len(sent) == 2
+    notify.alert_system_error("S", "c", "another fault")  # a different alert: also not mailed, the one email is used
+    assert len(sent) == 1
 
 
 def test_every_workflow_that_logs_in_to_ig_can_email():
@@ -91,51 +91,25 @@ def db_down(wired, monkeypatch):
     return store, sent
 
 
-def test_db_down_the_cap_limits_distinct_subjects_per_process(db_down):
+def test_db_down_only_one_email_per_process_whatever_the_subject_or_cap(db_down):
     store, sent = db_down
     for i in range(notify.ALERT_EMAILS_PER_DAY + 5):
         notify._email_alert(f"fault {i}", "b")
-    assert len(sent) == notify.ALERT_EMAILS_PER_DAY
-
-
-def test_db_down_cap_is_the_callers_cap_not_the_default(db_down):
-    store, sent = db_down
-    for i in range(6):
-        notify._email_alert(f"fault {i}", "b", bucket="channel_alert_emails", cap=3)
-    assert len(sent) == 3
-
-
-def test_db_down_buckets_are_counted_apart(db_down):
-    store, sent = db_down
-    for i in range(3):
-        notify._email_alert(f"a {i}", "b", cap=3)
-    for i in range(3):
-        notify._email_alert(f"c {i}", "b", bucket="channel_alert_emails", cap=3)
-    assert len(sent) == 6
-    notify._email_alert("a 0", "b", cap=3)          # same subject, same bucket: still once
-    assert len(sent) == 6
-
-
-def test_db_down_the_same_subject_is_sent_again_on_the_next_utc_day(db_down, monkeypatch):
-    store, sent = db_down
-    import datetime as _dt
-
-    class _Day1(_dt.datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return cls(2026, 11, 15, 23, 59, tzinfo=tz)
-
-    class _Day2(_dt.datetime):
-        @classmethod
-        def now(cls, tz=None):
-            return cls(2026, 11, 16, 0, 1, tzinfo=tz)
-    monkeypatch.setattr(notify, "datetime", _Day1)
-    notify._email_alert("same", "b")
-    notify._email_alert("same", "b")
     assert len(sent) == 1
-    monkeypatch.setattr(notify, "datetime", _Day2)
-    notify._email_alert("same", "b")
-    assert len(sent) == 2
+
+
+def test_db_down_one_email_covers_every_bucket(db_down):
+    store, sent = db_down
+    notify._email_alert("a", "b", cap=3)
+    notify._email_alert("c", "b", bucket="channel_alert_emails", cap=3)
+    assert len(sent) == 1
+
+
+def test_db_down_the_first_email_is_the_one_sent(db_down):
+    store, sent = db_down
+    notify._email_alert("first fault", "b")
+    notify._email_alert("second fault", "b")
+    assert [s["subject"] for s in sent] == ["first fault"]
 
 
 def test_db_down_a_send_failure_is_returned_not_hidden(db_down, monkeypatch):

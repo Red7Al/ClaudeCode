@@ -1224,9 +1224,9 @@ def _email_alert(subject: str, text: str, bucket: str = "alert_emails", cap: int
     nobody. The same alert is emailed once per UTC day and at most ALERT_EMAILS_PER_DAY alerts a day in all, counted in
     app_config (shared by every job, like the IG login pause). MEASURED 2026-10-27: no alert fired in 24 recent runs of
     Closing Window, Order Bridge, Session Close and State Audit; the ceiling is for a fault that repeats every run.
-    No sender configured: nothing is sent. The count cannot be recorded (database down): sent anyway, once per subject and at
-    most `cap` per running process (_ALERTED_NO_DB; owner 2026-11-15) -- the shared daily ceiling does NOT hold in that case,
-    because every job is a fresh process (specialist: up to ~45 identical emails an hour at peak, DERIVED)."""
+    No sender configured: nothing is sent. The count cannot be recorded (database down): sent anyway, but only ONE email per
+    running process in total (_ALERTED_NO_DB; owner 2026-11-15, option B). The shared daily ceiling cannot hold then, because
+    every job is a fresh process: at most one email per job run (specialist: ~45 identical emails an hour at peak without it)."""
     if not (os.environ.get("RESEND_API_KEY")
             or (os.environ.get("YAHOO_USER") and os.environ.get("YAHOO_APP_PASSWORD"))):
         return False
@@ -1247,13 +1247,13 @@ def _email_alert(subject: str, text: str, bucket: str = "alert_emails", cap: int
         log.warning(f"{cap} {bucket} emails already sent today -- not emailed: {subject}")
         return False
     if not config_store.set_value(key, json.dumps({"sent": sent + [sig]}), updated_by="notify"):
-        # The database refused: send anyway (owner 2026-11-15: an outage is exactly when the alert is wanted), limited to
-        # once per subject and at most `cap` per running process, since the shared count cannot be kept.
-        _k = (key, sig)
-        if _k in _ALERTED_NO_DB or len({k for k in _ALERTED_NO_DB if k[0] == key}) >= cap:
-            log.error(f"alert email count could not be recorded; already sent by this process or cap reached -- not repeated: {subject}")
+        # The database refused: send anyway (owner 2026-11-15: an outage is exactly when the alert is wanted), but ONE
+        # email per running process in total (owner 2026-11-15, option B: "too many emails and I will ignore them"), since
+        # the shared count cannot be kept. Later alerts of this run are logged, not mailed.
+        if _ALERTED_NO_DB:
+            log.error(f"alert email count could not be recorded; this process already sent its one outage-time email -- not mailed: {subject}")
             return False
-        _ALERTED_NO_DB.add(_k)
+        _ALERTED_NO_DB.add((key, sig))
         log.error(f"alert email count could not be recorded -- sending anyway (database unreachable): {subject}")
     from trade_email import send_simple_email
     return send_simple_email(subject=subject, text=text)
