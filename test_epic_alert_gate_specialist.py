@@ -83,7 +83,7 @@ def test_forty_alerts_open_and_close_forty_connections(monkeypatch):
 def test_real_alert_with_email_false_still_posts_slack_and_sends_no_email(monkeypatch):
     emailed, posted = [], []
     monkeypatch.setattr(notify, "_email_alert", lambda subject, text: emailed.append(subject) or True)
-    monkeypatch.setattr(notify, "_send", lambda channel, blocks: posted.append(channel) or True)
+    monkeypatch.setattr(notify, "_send", lambda channel, blocks, **k: posted.append(channel) or True)
     monkeypatch.setattr(ig_shim, "live_tickers", lambda: set())
     ig_shim._epic_alert("SHAW.L", "wrong-instrument risk")
     assert emailed == [] and posted == ["alerts"]
@@ -92,7 +92,7 @@ def test_real_alert_with_email_false_still_posts_slack_and_sends_no_email(monkey
 def test_real_alert_for_a_live_ticker_emails_with_the_get_epic_subject(monkeypatch):
     emailed, posted = [], []
     monkeypatch.setattr(notify, "_email_alert", lambda subject, text: emailed.append(subject) or True)
-    monkeypatch.setattr(notify, "_send", lambda channel, blocks: posted.append(channel) or True)
+    monkeypatch.setattr(notify, "_send", lambda channel, blocks, **k: posted.append(channel) or True)
     monkeypatch.setattr(ig_shim, "live_tickers", lambda: {"SHAW.L"})
     ig_shim._epic_alert("SHAW.L", "wrong-instrument risk")
     assert emailed == ["System alert: get_epic - wrong-instrument risk"] and posted == ["alerts"]

@@ -136,6 +136,11 @@ Each rule exists because skipping it produced a real defect in September 2026.
 ```
 
 - **Use the venv.** Bare `python` is a system 3.14 with no pytest.
+- **Run `precheck_tests.py` before the clean suite -- owner 2026-11-15** ("do everything you can to not have test failures";
+  "belt and braces checks prior to testing"). `./.venv/Scripts/python.exe precheck_tests.py origin/main` takes every function,
+  class and constant the diff defines or changes and runs every test file that mentions one (seconds). Measured: on
+  2026-11-14 the 18-minute suite was the first thing to find two tests that stubbed `notify._send(channel, blocks)` after its
+  signature changed; the precheck finds them in 18 s. Fix what it reports, then run the clean suite.
 - **Never read pytest's exit code through a pipe.** Use `${PIPESTATUS[0]}`.
 - **The local suite is not CI.** Locally there is a `.env` and a `hvf_web/snapshot.json`; CI has neither.
   Before pushing, run in a clean worktree with the placeholder env vars from
