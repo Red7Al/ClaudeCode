@@ -43,9 +43,9 @@ speaking.** Every one had a single cheap command that would have prevented it.
   to it, with the measured fact that the database is Postgres/Supabase stated first (each SQL Server concept is mapped to its
   Postgres equivalent before it is judged). Each SME's owner-given responsibilities and deliverables are in its definition.
   **Rule 3: Final output.** Before final recommendations: gather findings from all relevant SMEs; identify conflicts between
-  them; resolve trade-offs explicitly; present ONE consolidated recommendation. (The owner's "Final structure:" heading
-  arrived with no structure under it -- asked for; until then each consolidated reply names the SMEs consulted, their
-  conflicts, how each was resolved, and the recommendation.)
+  them; resolve trade-offs explicitly; present ONE consolidated recommendation. **Final structure (owner 2026-11-15), used for every consolidated review:** "SME Review Summary" -- for each of Software Architect,
+  Data Quality, Test Specialist, UI, UX, Security, Reliability and SQL Server SME: Findings, Risks, Recommendations; then Cross-SME
+  Conflicts; Final Consolidated Recommendation; Assumptions Made; Confidence Level. An SME that does not apply says so and why.
 - **Proof for every statement.** Attach the command and its result. Label MEASURED / DERIVED / unproven.
   "Do not infer, assume, presume or guess" (owner) — if it is measurable, measure it.
 - **Missing information is a stop, not a guess -- owner 2026-11-13.** When information the task needs is missing and
