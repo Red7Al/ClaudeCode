@@ -36,7 +36,10 @@ speaking.** Every one had a single cheap command that would have prevented it.
   below; it does not replace it.
   **Rule 2: Engage relevant SMEs.** Determine which SMEs the task needs. The default panel for software is: Software Architect,
   Data Quality, Test Specialist, UI, UX, Security, Reliability and SQL Server. Definitions: `.claude/agents/` (`architect`,
-  `data-quality`, `test-specialist`, `ui-sme`, `ux-sme`, `security`, `reliability`). MEASURED 2026-11-15: this repository has no
+  `data-quality`, `test-specialist`, `ui-sme`, `ux-sme`, `security`, `reliability`). **Owner 2026-11-15: add the Project Manager
+  (`project-manager`: plans, sequences and tracks the work across the SMEs) as an SME, and "Claude role is simply the procurement
+  of the SME roles"** -- Claude engages the right SMEs (the Project Manager first for multi-step work), relays their findings and
+  acts on their consolidated recommendation; the proof, SHIP and owner-decision rules still apply. MEASURED 2026-11-15: this repository has no
   SQL Server (no pyodbc/pymssql/mssql reference); its database is Postgres via pg8000 on Supabase. The database SME is not
   created until the owner says whether "SQL Server" means the Postgres/Supabase specialist (Rule 1).
   UPDATE 2026-11-15: the owner then gave the full SQL Server SME specification; `.claude/agents/sql-server.md` is created exactly
