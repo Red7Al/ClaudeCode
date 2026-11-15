@@ -34,6 +34,11 @@ speaking.** Every one had a single cheap command that would have prevented it.
   technologies or data structures. Every reply that recommends something lists its assumptions, each marked VERIFIED
   (with the command) or UNVERIFIED (with the question that would settle it). This sharpens the missing-information rule
   below; it does not replace it.
+  **Rule 2: Engage relevant SMEs.** Determine which SMEs the task needs. The default panel for software is: Software Architect,
+  Data Quality, Test Specialist, UI, UX, Security, Reliability and SQL Server. Definitions: `.claude/agents/` (`architect`,
+  `data-quality`, `test-specialist`, `ui-sme`, `ux-sme`, `security`, `reliability`). MEASURED 2026-11-15: this repository has no
+  SQL Server (no pyodbc/pymssql/mssql reference); its database is Postgres via pg8000 on Supabase. The database SME is not
+  created until the owner says whether "SQL Server" means the Postgres/Supabase specialist (Rule 1).
 - **Proof for every statement.** Attach the command and its result. Label MEASURED / DERIVED / unproven.
   "Do not infer, assume, presume or guess" (owner) — if it is measurable, measure it.
 - **Missing information is a stop, not a guess -- owner 2026-11-13.** When information the task needs is missing and
