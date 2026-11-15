@@ -248,7 +248,8 @@ workflow file changes, put today's date in its `name:`.
   direction, type, size, entry, stop, take-profit and good-till (`notify.format_order_details`), and goes to the holder of
   that IG account (`ig_shim._profile_recipients`), not the global list. An alert that only reaches Slack reaches nobody. **Owner 2026-11-14: "slack only alerts should go to email - if we get too much email then that will need to be managed"**:
   every message `notify._send` posts to the `alerts` channel is also emailed (`_email_alert`: once a day per subject, at most
-  `ALERT_EMAILS_PER_DAY` a day); a caller that already emails passes `email=False`. Routine reports are NOT emailed (owner 2026-11-15: "if I am getting too many emails I will ignore them"): the
+  `ALERT_EMAILS_PER_DAY` a day, EXCEPT while the database is down: then it is sent anyway, once per subject per running
+  process, so the shared ceiling does not hold -- volume decision with the owner pending, 2026-11-15); a caller that already emails passes `email=False`. Routine reports are NOT emailed (owner 2026-11-15: "if I am getting too many emails I will ignore them"): the
   end-of-day missed-trade digest, the post-trade review and the first-occurrence missed-trade post pass `email=False`; the cap is 10 a day. The first-occurrence post
   is not emailed (deliberately quiet classes; the daily digest carries them). Direct posters in `run_lwr_watchdog`,
   `run_self_audit`, `run_session_watchdog`, `working_orders_report`, `run_hvf_orders` are not yet converted
