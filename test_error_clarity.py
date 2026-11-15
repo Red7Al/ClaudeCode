@@ -158,3 +158,16 @@ def test_no_epic_without_a_recorded_reason_says_so(monkeypatch):
     monkeypatch.setattr(ig_shim, "get_epic", lambda t: None)
     r = ig_shim.size_working_order("AAPL", "BUY", 150.0, 140.0, 170.0, {"risk_per_trade": 0.02})
     assert "recorded no reason" in r["reason"] and "did not raise" in r["reason"]
+
+
+def test_a_no_epic_reason_is_per_thread_and_consumed_once(monkeypatch):
+    """The reason set by get_epic in one thread is read (and removed) by describe_size_skip in that thread only, and never
+    describes a second call."""
+    import threading
+    ig_shim._no_epic("AAPL", "reason A")
+    seen = {}
+    t = threading.Thread(target=lambda: seen.update(other=ig_shim.describe_size_skip("AAPL", None)))
+    t.start(); t.join()
+    assert "reason A" not in seen["other"] and "recorded no reason" in seen["other"]
+    assert "reason A" in ig_shim.describe_size_skip("AAPL", None)
+    assert "reason A" not in ig_shim.describe_size_skip("AAPL", None)

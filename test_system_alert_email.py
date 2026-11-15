@@ -66,3 +66,12 @@ def test_the_cron_watch_sends_one_email_not_two(wired):
     import run_cron_watch
     run_cron_watch._notify("Order Bridge failed", "run 1 failed")
     assert [s["subject"] for s in sent] == ["Order Bridge failed"]
+
+
+def test_slack_origin_alerts_have_their_own_ceiling_of_ten_a_day(wired, monkeypatch):
+    """Owner 2026-11-15: CHANNEL_ALERT_EMAILS_PER_DAY is 10, counted apart from the system-error count."""
+    store, sent = wired
+    assert notify.CHANNEL_ALERT_EMAILS_PER_DAY == 10
+    for i in range(15):
+        notify._email_alert(f"Alert: fault {i}", "body", bucket="channel_alert_emails", cap=notify.CHANNEL_ALERT_EMAILS_PER_DAY)
+    assert len(sent) == 10
