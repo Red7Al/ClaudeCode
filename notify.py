@@ -1224,7 +1224,9 @@ def _email_alert(subject: str, text: str, bucket: str = "alert_emails", cap: int
     nobody. The same alert is emailed once per UTC day and at most ALERT_EMAILS_PER_DAY alerts a day in all, counted in
     app_config (shared by every job, like the IG login pause). MEASURED 2026-10-27: no alert fired in 24 recent runs of
     Closing Window, Order Bridge, Session Close and State Audit; the ceiling is for a fault that repeats every run.
-    No sender configured, or the count cannot be recorded: nothing is sent."""
+    No sender configured: nothing is sent. The count cannot be recorded (database down): sent anyway, once per subject and at
+    most `cap` per running process (_ALERTED_NO_DB; owner 2026-11-15) -- the shared daily ceiling does NOT hold in that case,
+    because every job is a fresh process (specialist: up to ~45 identical emails an hour at peak, DERIVED)."""
     if not (os.environ.get("RESEND_API_KEY")
             or (os.environ.get("YAHOO_USER") and os.environ.get("YAHOO_APP_PASSWORD"))):
         return False

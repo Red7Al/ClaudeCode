@@ -79,3 +79,79 @@ def test_slack_origin_alerts_have_their_own_ceiling_of_ten_a_day(wired, monkeypa
     for i in range(15):
         notify._email_alert(f"Alert: fault {i}", "body", bucket="channel_alert_emails", cap=notify.CHANNEL_ALERT_EMAILS_PER_DAY)
     assert len(sent) == 10
+
+
+# ---- test specialist 2026-11-15: database-down paths of _email_alert -------------------------------------------------
+@pytest.fixture
+def db_down(wired, monkeypatch):
+    store, sent = wired
+    import config_store
+    monkeypatch.setattr(notify, "_ALERTED_NO_DB", set())
+    monkeypatch.setattr(config_store, "set_value", lambda *a, **k: False)
+    return store, sent
+
+
+def test_db_down_the_cap_limits_distinct_subjects_per_process(db_down):
+    store, sent = db_down
+    for i in range(notify.ALERT_EMAILS_PER_DAY + 5):
+        notify._email_alert(f"fault {i}", "b")
+    assert len(sent) == notify.ALERT_EMAILS_PER_DAY
+
+
+def test_db_down_cap_is_the_callers_cap_not_the_default(db_down):
+    store, sent = db_down
+    for i in range(6):
+        notify._email_alert(f"fault {i}", "b", bucket="channel_alert_emails", cap=3)
+    assert len(sent) == 3
+
+
+def test_db_down_buckets_are_counted_apart(db_down):
+    store, sent = db_down
+    for i in range(3):
+        notify._email_alert(f"a {i}", "b", cap=3)
+    for i in range(3):
+        notify._email_alert(f"c {i}", "b", bucket="channel_alert_emails", cap=3)
+    assert len(sent) == 6
+    notify._email_alert("a 0", "b", cap=3)          # same subject, same bucket: still once
+    assert len(sent) == 6
+
+
+def test_db_down_the_same_subject_is_sent_again_on_the_next_utc_day(db_down, monkeypatch):
+    store, sent = db_down
+    import datetime as _dt
+
+    class _Day1(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 15, 23, 59, tzinfo=tz)
+
+    class _Day2(_dt.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 11, 16, 0, 1, tzinfo=tz)
+    monkeypatch.setattr(notify, "datetime", _Day1)
+    notify._email_alert("same", "b")
+    notify._email_alert("same", "b")
+    assert len(sent) == 1
+    monkeypatch.setattr(notify, "datetime", _Day2)
+    notify._email_alert("same", "b")
+    assert len(sent) == 2
+
+
+def test_db_down_a_send_failure_is_returned_not_hidden(db_down, monkeypatch):
+    store, sent = db_down
+    import trade_email
+    monkeypatch.setattr(trade_email, "send_simple_email", lambda **k: False)
+    assert notify._email_alert("x", "b") is False
+
+
+def test_a_failed_read_with_a_good_write_resets_the_count_KNOWN_LIMIT(wired, monkeypatch):
+    """get_value swallows a read error and returns the default, so a read failure looks like 'nothing sent today': the
+    alert is mailed again and the stored count is overwritten with just this one. Pinned so a change is deliberate."""
+    store, sent = wired
+    import config_store
+    notify._email_alert("x", "b")
+    assert len(sent) == 1
+    monkeypatch.setattr(config_store, "get_value", lambda k, d="": d)          # read refused, write fine
+    notify._email_alert("x", "b")
+    assert len(sent) == 2
