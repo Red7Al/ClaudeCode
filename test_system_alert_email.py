@@ -41,12 +41,16 @@ def test_without_a_sender_nothing_is_sent_or_counted(wired, monkeypatch):
     assert sent == [] and store == {}
 
 
-def test_a_count_that_cannot_be_recorded_sends_nothing(wired, monkeypatch):
+def test_a_count_that_cannot_be_recorded_still_sends_once(wired, monkeypatch):
+    """Owner 2026-11-15: when the database is down the alert is sent anyway, once per subject per process."""
     store, sent = wired
     import config_store
+    monkeypatch.setattr(notify, "_ALERTED_NO_DB", set())
     monkeypatch.setattr(config_store, "set_value", lambda *a, **k: False)
     notify.alert_system_error("S", "c", "fault")
-    assert sent == []
+    notify.alert_system_error("S", "c", "fault")          # same alert again: not repeated
+    notify.alert_system_error("S", "c", "another fault")
+    assert len(sent) == 2
 
 
 def test_every_workflow_that_logs_in_to_ig_can_email():

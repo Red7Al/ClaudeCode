@@ -1215,6 +1215,7 @@ def alert_macro_gate_failed(reason: str, vix: float, yield_spread: float, sessio
 
 CHANNEL_ALERT_EMAILS_PER_DAY = 10   # the Slack-origin alerts have their OWN count, so a noisy one can never use up the
 #                                    system-error allowance below (test specialist 2026-11-14)
+_ALERTED_NO_DB = set()   # (bucket:day, subject hash) sent by THIS process while the shared count could not be recorded
 ALERT_EMAILS_PER_DAY = 10     # owner 2026-10-27: "140 is way too many" -- a hard ceiling across every job
 
 
@@ -1244,8 +1245,14 @@ def _email_alert(subject: str, text: str, bucket: str = "alert_emails", cap: int
         log.warning(f"{cap} {bucket} emails already sent today -- not emailed: {subject}")
         return False
     if not config_store.set_value(key, json.dumps({"sent": sent + [sig]}), updated_by="notify"):
-        log.error(f"alert email count could not be recorded -- not emailed: {subject}")
-        return False
+        # The database refused: send anyway (owner 2026-11-15: an outage is exactly when the alert is wanted), limited to
+        # once per subject and at most `cap` per running process, since the shared count cannot be kept.
+        _k = (key, sig)
+        if _k in _ALERTED_NO_DB or len({k for k in _ALERTED_NO_DB if k[0] == key}) >= cap:
+            log.error(f"alert email count could not be recorded; already sent by this process or cap reached -- not repeated: {subject}")
+            return False
+        _ALERTED_NO_DB.add(_k)
+        log.error(f"alert email count could not be recorded -- sending anyway (database unreachable): {subject}")
     from trade_email import send_simple_email
     return send_simple_email(subject=subject, text=text)
 
