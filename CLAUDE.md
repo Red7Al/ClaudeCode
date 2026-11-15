@@ -28,6 +28,12 @@ The engagement before this one ended over unverified claims, and six complaints 
 `ChangeRequests/20260918.txt`. The common thread: **not reading my own output and my own code before
 speaking.** Every one had a single cheap command that would have prevented it.
 
+- **Owner's clearer rules, 2026-11-15 (numbered as he gave them; more may follow).**
+  **Rule 1: Never Assume.** Before producing recommendations: identify assumptions; mark them explicitly; verify them where
+  possible; if information is missing, ask targeted questions; do not invent requirements, constraints, users, environments,
+  technologies or data structures. Every reply that recommends something lists its assumptions, each marked VERIFIED
+  (with the command) or UNVERIFIED (with the question that would settle it). This sharpens the missing-information rule
+  below; it does not replace it.
 - **Proof for every statement.** Attach the command and its result. Label MEASURED / DERIVED / unproven.
   "Do not infer, assume, presume or guess" (owner) — if it is measurable, measure it.
 - **Missing information is a stop, not a guess -- owner 2026-11-13.** When information the task needs is missing and
