@@ -39,6 +39,13 @@ speaking.** Every one had a single cheap command that would have prevented it.
   `data-quality`, `test-specialist`, `ui-sme`, `ux-sme`, `security`, `reliability`). MEASURED 2026-11-15: this repository has no
   SQL Server (no pyodbc/pymssql/mssql reference); its database is Postgres via pg8000 on Supabase. The database SME is not
   created until the owner says whether "SQL Server" means the Postgres/Supabase specialist (Rule 1).
+  UPDATE 2026-11-15: the owner then gave the full SQL Server SME specification; `.claude/agents/sql-server.md` is created exactly
+  to it, with the measured fact that the database is Postgres/Supabase stated first (each SQL Server concept is mapped to its
+  Postgres equivalent before it is judged). Each SME's owner-given responsibilities and deliverables are in its definition.
+  **Rule 3: Final output.** Before final recommendations: gather findings from all relevant SMEs; identify conflicts between
+  them; resolve trade-offs explicitly; present ONE consolidated recommendation. (The owner's "Final structure:" heading
+  arrived with no structure under it -- asked for; until then each consolidated reply names the SMEs consulted, their
+  conflicts, how each was resolved, and the recommendation.)
 - **Proof for every statement.** Attach the command and its result. Label MEASURED / DERIVED / unproven.
   "Do not infer, assume, presume or guess" (owner) — if it is measurable, measure it.
 - **Missing information is a stop, not a guess -- owner 2026-11-13.** When information the task needs is missing and
