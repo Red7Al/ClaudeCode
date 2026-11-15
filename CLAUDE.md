@@ -61,7 +61,7 @@ speaking.** Every one had a single cheap command that would have prevented it.
   developer SME for the business side of the trading"). Definitions are in `.claude/agents/`: `architect` (every
   cross-module design: error handling, the order path, shared helpers, alerts, schedules; prefers short procedural shared
   functions over generated bulk), `ui-sme` and `ux-sme` (any page, table or email layout the owner reads), `test-specialist`
-  (rule 12), and `quant-dev` (anything that moves a trading number: triggers, sizing, stops, filters, replays, R and £).
+  (rule 12), and `quant-dev` (anything that moves a trading number: triggers, sizing, stops, filters, replays, R and £), and `data-quality` (owner 2026-11-15: "a data quality role would be extremely useful" -- whether the data is TRUE before it is acted on or reported: instrument identity and epics, price bars, caps, sectors, counts, any alert that claims a fact about the data).
   Give the SME the code to read and the question, and act on its single recommendation. SMEs advise and review; the author
   builds; none of them replaces proof (MEASURED/DERIVED/unproven) or the owner's decisions.
 - **Commit anything successfully tested.** Do not leave verified work waiting to be offered.
