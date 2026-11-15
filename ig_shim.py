@@ -4687,7 +4687,8 @@ def _post_trade_review(pos: dict, pnl: float, close_reason: str):
                                     f"Target {take_profit or '—'} | Size {size} | "
                                     f"Deal {pos.get('deal_id', '—')}")}]},
         ]
-        _send("alerts", blocks)
+        # A routine per-trade report, not an alert: not emailed (it would email on every close and use up the alert cap)
+        _send("alerts", blocks, email=False)
         log.info(f"Post-trade review posted for {ticker}: {verdict} | R:R {rr_str} | P&L {pnl_str}")
 
     except Exception as e:

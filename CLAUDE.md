@@ -86,7 +86,12 @@ speaking.** Every one had a single cheap command that would have prevented it.
 
 Each rule exists because skipping it produced a real defect in September 2026.
 
-1. **Enumerate before touching shared state.** Grep every reader and writer of the table/column/file
+1. **Enumerate every use of a function BEFORE you change its signature, return value or behaviour -- owner 2026-11-15**
+   ("changing a function and not checking everywhere that is used is very poor"). `git grep -nw <name>` across code,
+   tests (`monkeypatch.setattr(..., "<name>", ...)` stubs fix a signature in place), workflows, skills and docs; list the
+   callers in the reply and update each in the same change. Then run `precheck_tests.py`. 2026-11-14: `notify._send` gained
+   a parameter and two tests with two-argument stubs were found only by the 18-minute suite.
+   **Enumerate before touching shared state.** Grep every reader and writer of the table/column/file
    (`update <t>`, `insert into <t>`) and say what you found. "Absent from IG's working-order book" once
    meant three things in three modules; the sweep expired 85 rows, 31 of them live. Only
    `working_order_state.classify` may interpret it now.

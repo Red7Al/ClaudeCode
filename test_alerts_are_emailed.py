@@ -83,3 +83,22 @@ def test_noisy_alerts_cannot_starve_a_system_error(monkeypatch):
         notify.alert_watchdog_trigger(f"Job {i}", f"wf{i}.yml", 20)
     notify.alert_system_error("S", "scan", "critical fault", "d")
     assert any(s.startswith("System alert") for s in sent)
+
+
+def test_every_direct_send_to_alerts_outside_notify_chooses_whether_to_email():
+    """Enumerated 2026-11-14 after the fact: ig_shim's per-trade post-trade review called _send("alerts", ...) and would
+    have emailed on every closed trade. A caller outside notify.py must say email=True/False; it is never left to the default."""
+    import ast
+    import pathlib
+    import subprocess
+    root = pathlib.Path(__file__).parent
+    files = subprocess.run(["git", "ls-files", "*.py"], cwd=root, capture_output=True, text=True).stdout.split()
+    bad = []
+    for f in files:
+        if f in ("notify.py",) or pathlib.Path(f).name.startswith("test_"):
+            continue
+        for n in ast.walk(ast.parse((root / f).read_text(encoding="utf8", errors="ignore"))):
+            if isinstance(n, ast.Call) and getattr(n.func, "id", getattr(n.func, "attr", "")) == "_send" \
+                    and not any(k.arg == "email" for k in n.keywords):
+                bad.append(f"{f}:{n.lineno}")
+    assert not bad, f"_send called without email=True/False: {bad}"
