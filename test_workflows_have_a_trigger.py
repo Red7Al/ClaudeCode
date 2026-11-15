@@ -15,9 +15,6 @@ MANUAL = {
     "trading-self-audit.yml": "manual audit (skills_src/ah-deploy)",
     "trading-x-publish.yml": "manual X publish (skills_src/ah-x-publications)",
     "trading-x-verify.yml": "manual X check (skills_src/ah-x-publications)",
-    "trading-bounce-alert.yml": "REVIEW: referenced only by BACKLOG.md and run_bounce_alert.py (2026-11-14)",
-    "trading-hot-take.yml": "REVIEW: no reference anywhere, dispatch-only (2026-11-14); owner to keep or delete",
-    "trading-squeeze-history-replay.yml": "REVIEW: no reference anywhere, dispatch-only (2026-11-14); owner to keep or delete",
 }
 EVENT = ("push", "pull_request", "workflow_call", "workflow_run")
 

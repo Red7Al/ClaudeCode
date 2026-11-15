@@ -1157,7 +1157,9 @@ def summarize_missed_trades():
                                 "text": "*Corrective actions:*\n" + "\n".join(action_lines)[:2900]}})
     blocks.append({"type": "context",
                    "elements": [{"type": "mrkdwn", "text": f"{_SIGNAL_KEY}\n{_ts()}"}]})
-    _send("alerts", blocks)
+    # A routine end-of-day digest, not an alert: not emailed (owner 2026-11-06: hundreds of missed-trade findings are noise;
+    # the email classes are already mailed one by one at the time).
+    _send("alerts", blocks, email=False)
 
 
 def alert_daily_loss_limit(user: str, total_pnl: float, limit_pct: float):
@@ -1165,7 +1167,7 @@ def alert_daily_loss_limit(user: str, total_pnl: float, limit_pct: float):
     blocks = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": "🚨 Daily Loss Limit Hit"}
+            "text": {"type": "plain_text", "text": f"🚨 Daily Loss Limit Hit — {user}"}
         },
         {
             "type": "section",
@@ -1211,7 +1213,7 @@ def alert_macro_gate_failed(reason: str, vix: float, yield_spread: float, sessio
     _send("alerts", blocks)    # emailed too, by _send
 
 
-CHANNEL_ALERT_EMAILS_PER_DAY = 20   # the Slack-origin alerts have their OWN count, so a noisy one can never use up the
+CHANNEL_ALERT_EMAILS_PER_DAY = 10   # the Slack-origin alerts have their OWN count, so a noisy one can never use up the
 #                                    system-error allowance below (test specialist 2026-11-14)
 ALERT_EMAILS_PER_DAY = 10     # owner 2026-10-27: "140 is way too many" -- a hard ceiling across every job
 
