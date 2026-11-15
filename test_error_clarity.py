@@ -140,3 +140,21 @@ def test_a_failure_is_shown_once_not_repeated_on_a_later_different_skip():
     finally:
         ig_shim.LAST_SIZE_SKIP.pop("EPIC.S", None)
     assert "pool full" not in txt and "account too small" in txt
+
+
+def test_no_epic_alert_says_what_get_epic_checked_and_why_it_refused(monkeypatch):
+    """Owner 2026-11-15: an alert that says 'no IG epic' with no due diligence shown is misleading (AAPL). When get_epic
+    gives up it records WHY, and the alert says so instead of a generic 'could not match by name and price'."""
+    def refuse(ticker):
+        return ig_shim._no_epic(ticker, "IG returned markets but none matches the company name Yahoo gives")
+    monkeypatch.setattr(ig_shim, "get_epic", refuse)
+    r = ig_shim.size_working_order("AAPL", "BUY", 150.0, 140.0, 170.0, {"risk_per_trade": 0.02})
+    assert r["size"] == 0.0
+    assert "no IG epic was found" in r["reason"] and "none matches the company name Yahoo gives" in r["reason"]
+    assert "calculated size is 0" in r["reason"]          # still classed SIZE_ZERO by notify
+
+
+def test_no_epic_without_a_recorded_reason_says_so(monkeypatch):
+    monkeypatch.setattr(ig_shim, "get_epic", lambda t: None)
+    r = ig_shim.size_working_order("AAPL", "BUY", 150.0, 140.0, 170.0, {"risk_per_trade": 0.02})
+    assert "recorded no reason" in r["reason"] and "did not raise" in r["reason"]

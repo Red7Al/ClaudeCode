@@ -832,6 +832,9 @@ class _PerThread:
 LAST_SIZE_SKIP = _PerThread()
 # ticker -> the REAL error text when sizing failed (not 'no epic exists'); describe_size_skip() reports it verbatim.
 LAST_SIZE_ERROR = _PerThread()
+# ticker -> WHY get_epic returned nothing (what it tried and why it refused); describe_size_skip() reports it, so an alert
+# never says 'no IG epic' without saying what was checked (owner 2026-11-15: no due diligence was shown).
+LAST_EPIC_WHY = _PerThread()
 # ticker -> the reason place_hvf_order_from_sig refused this thread's order on size; order_skip_reason() reads it.
 LAST_ORDER_SKIP = _PerThread()
 # epic -> IG's minimum deal size, from this thread's last calculate_position_size for it ("Create an order"
@@ -1016,9 +1019,10 @@ def describe_size_skip(ticker: str, epic: str) -> str:
     if not epic:
         # No IG epic was found (get_epic refused or found nothing). Keeps "calculated size is 0" so notify still
         # classes it SIZE_ZERO. Owner 2026-11-09: a wrong or missing instrument is for finding BEFORE an order.
-        return (f"{ticker}: calculated size is 0 because no IG epic was found -- get_epic could not match this "
-                f"instrument to an IG market by name and price, so no order can be placed. Check epic_lookup and "
-                f"data_quality_log; do not loosen the match.")
+        _why = LAST_EPIC_WHY.pop(ticker, None) or ("get_epic returned nothing and recorded no reason (it did not raise); "
+                                                    "check epic_lookup and the run log")
+        return (f"{ticker}: calculated size is 0 because no IG epic was found -- {_why}. No order can be placed. "
+                f"Check epic_lookup and data_quality_log; do not loosen the match.")
     skip = LAST_SIZE_SKIP.get(epic or "")
     if skip and skip[0] == "RISK_CAP":
         # Keeps the literal "risk cap" so notify classes it RISK_CAP (daily digest, owner policy -- not paged).
@@ -1440,6 +1444,12 @@ def _epic_alert(ticker: str, summary: str, detail: str = "", always: bool = Fals
         pass
 
 
+def _no_epic(ticker: str, why: str):
+    """get_epic gives up: remember WHY for the alert, return None."""
+    LAST_EPIC_WHY[ticker] = why
+    return None
+
+
 def get_epic(ticker: str) -> Optional[str]:
     """
     Return the IG epic code for a given ticker symbol.
@@ -1497,7 +1507,7 @@ def get_epic(ticker: str) -> Optional[str]:
             # Refused, NOT purged: removing the existing wrong rows is the owner's call (2026-10-26).
             log.error(f"get_epic {ticker}: cached epic {cached_epic} ({cached_desc!r}) is a UK share code for a "
                       f"non-London ticker -- wrong listing, refusing")
-            return None
+            return _no_epic(ticker, "the cached epic is a UK share code for a non-London ticker (wrong listing), so it was refused")
         if (not y_name) or _is_verified_epic(ticker, cached_epic) \
                 or instrument_names_match(ticker, cached_desc or "", y_name):
             log.info(f"Epic cache hit: {ticker} → {cached_epic}")
@@ -1535,7 +1545,7 @@ def get_epic(ticker: str) -> Optional[str]:
             break
     if not markets:
         log.warning(f"No IG market found for ticker: {ticker} (tried {_terms})")
-        return None
+        return _no_epic(ticker, "IG's market search returned no market for any search term tried")
 
     # ── Pick the RIGHT market, not the first one (user 2026-06-12: search for
     # 'LAND' returned Gladstone Land Corporation [US, UB.D.LANDUS] first, and
@@ -1616,7 +1626,7 @@ def get_epic(ticker: str) -> Optional[str]:
                         pass
                     log.error(f"get_epic {ticker}: no candidate matches Yahoo name '{y_name}' "
                               f"(ticker + name search) — refusing")
-                    return None
+                    return _no_epic(ticker, "IG returned markets but none matches the company name Yahoo gives")
 
     # Price check (owner 2026-10-26, "ok, please progress"): a name that shares one word is not the instrument. Only
     # when the ticker has a recent stored close; the candidates are the same ones the name check allowed.
@@ -1639,7 +1649,7 @@ def get_epic(ticker: str) -> Optional[str]:
                 pass
             log.error(f"get_epic {ticker}: best match {best.get('epic')} ({best.get('instrumentName')}, bid "
                       f"{best.get('bid')}) is not at the last close {close} -- refusing (not cached)")
-            return None
+            return _no_epic(ticker, "the best IG match is not at the last close, so its identity is not confirmed")
 
     if is_uk and not best.get("epic", "").startswith("KA.D."):
         # A .L ticker that cannot resolve to a UK share epic is a wrong-
@@ -1653,12 +1663,12 @@ def get_epic(ticker: str) -> Optional[str]:
         except Exception:
             pass
         log.error(f"get_epic {ticker}: best match {best.get('epic')} is not a UK share epic — refusing")
-        return None
+        return _no_epic(ticker, "the best IG match is not a UK share epic for a UK ticker")
 
     if _wrong_market(ticker, best.get("epic", "")):
         log.error(f"get_epic {ticker}: best match {best.get('epic')} ({best.get('instrumentName')}) is a UK share "
                   f"code for a non-London ticker -- wrong listing, refusing (not cached)")
-        return None
+        return _no_epic(ticker, "the best IG match is a UK share code for a non-London ticker (wrong listing)")
 
     epic        = best["epic"]
     description = best.get("instrumentName", "")
