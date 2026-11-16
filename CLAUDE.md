@@ -232,6 +232,8 @@ workflow file changes, put today's date in its `name:`.
 
 ## Constraints
 
+- **No market is scan-only -- owner 2026-11-16** ("none are scan only"; "i may chose to use BSE at any point so it needs to be correct"). Every scanned instrument must have a verified IG epic; an instrument with none is a fault, not an exemption. A market is untradable only on dated evidence that IG does not list it, and the owner decides what follows.
+
 - **CHANGE FREEZE until Friday 2026-11-06 20:00 UK -- owner 2026-11-02** ("do all 3 and then that's plan for no more
   changes until Friday at 8pm!!!"). After the three agreed changes (new-user request email alert, 100 extra
   instruments, better insights) no product enhancement is committed, pushed or deployed until then. **Faults in live
