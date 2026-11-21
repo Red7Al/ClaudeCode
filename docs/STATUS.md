@@ -9,10 +9,11 @@ the command that produced it or says it is unproven. Last updated **2026-10-20 (
 
 ## 0b. 2026-11-21 -- epics: owner's target and open decisions
 
-- Owner 2026-11-21, Q2: "it should not fail an order as every instrument should have an epic in IG". Target: a complete, verified IG epic for every scanned instrument (see `CLAUDE.md` "No market is scan-only"). **Open, undecided:** whether an order-time backstop still refuses the order and emails the account holder if an epic slips through.
+- Owner 2026-11-21, Q2: "it should not fail an order as every instrument should have an epic in IG". Target: a complete, verified IG epic for every scanned instrument (see `CLAUDE.md` "No market is scan-only"). **Decided 2026-11-21 (owner, verbatim): "2 - try to resolve andorder, failing that email the account ewmail".** The order-time backstop: the system tries to resolve the epic and place the order, and only if that fails emails the account holder the order details. Existing rules unchanged: check IG for the order before any retry (CLAUDE.md, 2026-11-14); the 2x risk cap stands. Not yet built. **Still open:** whether an instrument IG does not list stays in the universe or is removed.
 - Epic recurrence (order attempts still finding no epic) is being diagnosed by `data-quality`: `ChangeRequests/20261116.txt` line 18. No cause is recorded yet.
-- **Pending owner decision:** two new SMEs (`ig-integration`, `instrument-master`) and a rule-traceability duty for `project-manager`. None is created.
+- ~~Pending owner decision: two new SMEs and a rule-traceability duty~~ -- decided, see the next bullet.
 - The Q1 relaxation of the off-hours rule is noted beside the 11-08 rows in section 0.
+- **2026-11-21: the owner approved the two SMEs and the duty ("2 - that i sfine").** Created: `.claude/agents/ig-integration.md`, `.claude/agents/instrument-master.md`; duty "rule traceability" added to `.claude/agents/project-manager.md`; named in `CLAUDE.md` Rule 2. Definitions only; not yet used on a real task and not yet committed (awaiting the usual review).
 
 ## 0a. 2026-11-11 -- Closing Window pause + risk-cap miss email
 
