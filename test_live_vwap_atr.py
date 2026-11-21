@@ -26,6 +26,10 @@ not just TRIGGERED ones).
 import hvf_web.server as server
 import volume_score
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 
 class _FakeDB:
     def close(self):

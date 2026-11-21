@@ -14,6 +14,10 @@ import pandas as pd
 
 import price_audit
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 TODAY = date(2026, 10, 12)          # a Monday: the previous weekday is Friday 2026-10-09
 PREV = date(2026, 10, 9)
 

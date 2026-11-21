@@ -13,6 +13,10 @@ import requests
 import ig_shim
 import price_audit
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 
 def _refusal(code="error.public-api.exceeded-account-historical-data-allowance"):
     resp = requests.Response()

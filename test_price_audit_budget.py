@@ -31,6 +31,9 @@ import pytest
 import price_audit
 
 
+pytestmark = pytest.mark.usefixtures("empty_database")
+
+
 class _Db:
     """Captures the audit-log insert so the recorded notes can be asserted."""
 

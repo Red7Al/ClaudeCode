@@ -1,6 +1,9 @@
 """Regression coverage for the bridge's guarded Let Winners Run hand-off."""
 
+import pytest
 
+
+@pytest.mark.usefixtures("empty_database")
 def test_bridge_runs_guarded_stop_management_when_no_new_candidates(monkeypatch):
     """Existing positions still need a review even on a pass with no new signal candidates."""
     from hvf_web import order_bridge

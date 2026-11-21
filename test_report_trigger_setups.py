@@ -9,6 +9,10 @@ to a 29 Sep funnel whose trigger-bar RVOL was 1.08 -- below his 1.7 floor.
 import trading_limits
 from hvf_web import server
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 LIMITS = {**trading_limits.limit_defaults(), "min_risk_reward": 3.1, "max_risk_reward": 100.0,
           "min_quality": 45, "min_rvol": 1.7, "min_volume_score": 4, "min_instrument_value": 485e6,
           "max_instrument_value": 0, "require_above_vwap": 1, "require_atr_expanding": 1}

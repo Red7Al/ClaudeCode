@@ -10,6 +10,9 @@ import pytest
 import ig_shim
 
 
+pytestmark = pytest.mark.usefixtures("empty_database")
+
+
 class _Session:
     def __init__(self, bid, offer):
         self.snap, self.posted = {"bid": bid, "offer": offer, "decimalPlacesFactor": 2}, []

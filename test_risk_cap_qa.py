@@ -214,6 +214,7 @@ def _bridge_place(monkeypatch, size_override=None):
     return out, placed, alerts
 
 
+@pytest.mark.usefixtures("empty_database")
 def test_the_bridge_places_nothing_and_records_the_cap_reason(monkeypatch):
     out, placed, alerts = _bridge_place(monkeypatch)
     assert out is None and placed == []
@@ -221,6 +222,7 @@ def test_the_bridge_places_nothing_and_records_the_cap_reason(monkeypatch):
     assert ig_shim.order_skip_reason("CVX").startswith("CVX: over the risk cap")
 
 
+@pytest.mark.usefixtures("empty_database")
 def test_create_an_order_with_the_owners_size_still_places_at_that_size(monkeypatch):
     out, placed, alerts = _bridge_place(monkeypatch, size_override=0.04)
     assert out and out.get("deal_id") == "D1" and len(placed) == 1

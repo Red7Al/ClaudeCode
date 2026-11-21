@@ -3,6 +3,9 @@ The request raises (timeout) or its confirmation read raises; IG's working-order
 import pytest
 import ig_shim
 
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 EPIC = "EP.D.TEST.DAILY.IP"
 
 

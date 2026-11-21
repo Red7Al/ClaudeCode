@@ -5,6 +5,9 @@ import pytest
 from hvf_web import server
 
 
+pytestmark = pytest.mark.usefixtures("empty_database")
+
+
 def _wk52_db(monkeypatch, rows, calls=None):
     """Fake the ONE aggregate round trip _snapshot_52wk now makes, and hand back the SQL it ran."""
     seen = {}

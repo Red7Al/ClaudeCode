@@ -17,6 +17,10 @@ import datetime as dt
 
 import audit_trading_state as ats
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 NOW = dt.datetime(2026, 9, 12, 21, 0, tzinfo=dt.timezone.utc)
 # RELATIVE, not a fixed date (2026-10-07). This was dt.datetime(2026, 10, 5) -- a constant named FUTURE
 # that stopped being the future on 2026-10-06, at which point test_a_healthy_book_reports_nothing

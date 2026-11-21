@@ -23,6 +23,9 @@ from hvf_web import order_bridge, server
 from test_bridge_report_triggers import (LIMITS, MET_MCAP, MET_SCAN, MET_SETUP, _REAL_ORDERED_TRIGGERS,
                                          _wire)
 
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 D = datetime.date
 
 

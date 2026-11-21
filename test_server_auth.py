@@ -12,6 +12,9 @@ import ig_shim as _real_ig_shim
 from hvf_web import server
 
 
+pytestmark = pytest.mark.usefixtures("empty_database")
+
+
 def _identity(monkeypatch, name, *, admin):
     monkeypatch.setattr(server._wu, "name_for_token", lambda token: name if token == "token" else "")
     monkeypatch.setattr(server._wu, "is_admin", lambda candidate: admin and candidate == name)

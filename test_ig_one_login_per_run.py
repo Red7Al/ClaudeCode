@@ -7,6 +7,10 @@ import price_audit
 import run_data_quality_audit as dqa
 from test_price_audit_prev_bar import PREV, _frame, _wire
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 
 class _Refused:
     status_code, headers = 401, {}

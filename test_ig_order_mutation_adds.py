@@ -4,6 +4,9 @@ import ig_shim
 from test_working_order_unconfirmed import _run, _SessPos, _wo, _pos, _http, EPIC
 
 
+pytestmark = pytest.mark.usefixtures("empty_database")
+
+
 def test_adopted_order_already_recorded_writes_no_second_row(monkeypatch):
     monkeypatch.setattr(ig_shim, "_deal_recorded", lambda d: True)
     sess = _SessPos(post_exc=TimeoutError("t"))

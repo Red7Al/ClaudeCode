@@ -11,6 +11,9 @@ import price_audit
 import run_data_quality_audit as dqa
 from test_price_audit_prev_bar import PREV, _frame, _wire
 
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 INVALID = "error.security.invalid-details"
 
 

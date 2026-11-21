@@ -17,6 +17,10 @@ os.environ.setdefault("SUPABASE_DB_PASSWORD", "test")
 
 import ig_shim  # noqa: E402
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 
 def _kept_pct(direction, entry, stop, price, threshold):
     """Percentage of the move from entry that the amended stop actually locks in."""

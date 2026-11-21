@@ -22,6 +22,9 @@ import account_scope
 from hvf_web import order_bridge
 
 
+pytestmark = pytest.mark.usefixtures("empty_database")
+
+
 def test_no_trading_profile_refuses_to_place(monkeypatch):
     """The guard raises rather than returning an empty skip set."""
     monkeypatch.setattr(account_scope, "row_profile_ids", lambda owner=None: [])

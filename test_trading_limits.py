@@ -13,6 +13,10 @@ should have been blocked).
 import ig_shim
 import trading_limits
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 
 # ── trading_limits.check_limits — pure logic ────────────────────────────────────────────────────────────
 

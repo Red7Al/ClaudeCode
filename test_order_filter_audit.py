@@ -6,6 +6,10 @@ above_vwap not being recorded daily. Reporting that would have been a false alar
 """
 import order_filter_audit as ofa
 
+import pytest
+
+pytestmark = pytest.mark.usefixtures("empty_database")
+
 LIMITS = {"min_risk_reward": 3.0, "min_quality": 50, "min_rvol": 1.5,
           "require_above_vwap": 1, "require_atr_expanding": 0,
           "min_instrument_value": 0, "max_instrument_value": 0}

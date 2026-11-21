@@ -17,6 +17,8 @@ import pytest
 
 import db_pool
 
+pytestmark = pytest.mark.real_db_pool
+
 
 class FakeConn:
     """Enough of pg8000.native.Connection for the lease logic."""

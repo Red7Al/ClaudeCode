@@ -15,6 +15,9 @@ import ig_shim
 from hvf_web import server
 
 
+pytestmark = pytest.mark.usefixtures("empty_database")
+
+
 def test_performance_inline_javascript_parses():
     """Any JavaScript written INLINE in index.html must parse.
 

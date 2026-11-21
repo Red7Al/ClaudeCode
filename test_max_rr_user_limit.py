@@ -19,6 +19,8 @@
 import re
 from pathlib import Path
 
+import pytest
+
 import config
 import trading_limits
 
@@ -78,6 +80,7 @@ def test_the_setting_is_saved_and_rendered():
         "/api/config does not accept max_risk_reward, so saving it silently does nothing")
 
 
+@pytest.mark.usefixtures("empty_database")
 def test_a_missing_ratio_passes_the_ceiling():
     """Unknown is not 'too high'. FX, indices and commodities can carry a null R:R."""
     lim = dict(trading_limits.limit_defaults(), max_risk_reward=10.0)

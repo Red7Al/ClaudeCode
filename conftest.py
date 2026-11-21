@@ -18,6 +18,8 @@
 # some other test warmed. Any future cache of this kind should be reset here too.
 # ======================================================================================================================
 
+import re
+
 import pytest
 
 
@@ -96,6 +98,145 @@ def _no_test_reaches_the_outside_world(monkeypatch):
     if attempts:
         pytest.fail(f"this test reached the outside world {len(attempts)} time(s): {attempts[:3]}", pytrace=False)
 
+
+# State of _no_test_reaches_the_live_database. A module imported DURING a test (notify, price_store...) binds whatever
+# db_pool.get_db is at that moment and keeps it after monkeypatch restores db_pool, so the stand-in must stay safe for
+# every later test: it records only while a guarded test is running and otherwise calls the real function.
+_DB_GUARD = {"attempts": None, "real": None, "stand_in": None}
+
+
+class _EmptyDb:
+    """The database a test gets from the `empty_database` fixture: UNREACHABLE, exactly as in CI where the placeholder
+    credentials cannot connect. Every statement is kept in `executed` (so a test can assert what it WOULD have written)
+    and then refused with db_pool.DatabaseUnavailable, so the code under test takes the same failure paths as in CI.
+    (Returning [] instead was wrong: account_scope treats an empty read as authoritative, and a write that returns
+    nothing fails web_users' read-back check -- measured 2026-11-21, 8 CI failures.)"""
+    columns, row_count = [], 0
+
+    def __init__(self, executed):
+        self.executed = executed
+
+    def run(self, sql, *a, **k):
+        import db_pool
+        self.executed.append((" ".join(str(sql).split()), k))
+        raise db_pool.DatabaseUnavailable("tests may not reach the live database (empty_database): "
+                                          + " ".join(str(sql).split())[:60])
+
+    def prepare(self, sql, *a, **k):
+        return self.run(sql)
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+class _RecordingDb:
+    """What a guarded test gets from get_db(): every call is recorded (SQL verb and table) and refused."""
+    columns, row_count = [], 0
+
+    def __init__(self, attempts):
+        self._attempts = attempts
+
+    def run(self, sql, *a, **k):
+        text = " ".join(str(sql).split()).lower()
+        m = re.match(r"(insert into|update|delete from|select .*? from|with|create table(?: if not exists)?|alter table|drop table)\s+(\S+)", text)
+        self._attempts.append(f"{m.group(1).split()[0]} {m.group(2)}" if m else text[:40])
+        raise ConnectionError("tests may not reach the live database: " + text[:60])
+
+    def prepare(self, sql, *a, **k):
+        self._attempts.append("prepare " + " ".join(str(sql).split())[:60])
+        raise ConnectionError("tests may not reach the live database (prepare)")
+
+    def close(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _guarded_get_db(*a, **k):
+    attempts = _DB_GUARD["attempts"]
+    if _DB_GUARD["stand_in"] is not None:      # the test asked for the empty_database fixture
+        return _DB_GUARD["stand_in"]
+    if attempts is None:                       # no guarded test is running: behave as the real function
+        return _DB_GUARD["real"](*a, **k)
+    attempts.append("get_db()")
+    return _RecordingDb(attempts)
+
+
+@pytest.fixture(autouse=True)
+def _no_test_reaches_the_live_database(request, monkeypatch):
+    """NO TEST MAY READ OR WRITE THE LIVE DATABASE.
+
+    db_pool loads the production credentials from .env (load_dotenv(override=True)), so an unstubbed get_db() in a test
+    is a real query against Supabase. MEASURED 2026-11-21 (spy): one run of test_trading_limits.py made 6
+    `insert into missed_trade_log` calls (AAPL BUY SIZE_ZERO) and 133 tests in 23 files reached get_db unstubbed
+    (writers: missed_trade_log, web_batch_activity, web_json_store).
+
+    db_pool.get_db and every module-level alias of it (notify._pool_get_db, price_store.get_db ...) become a recorder,
+    and pg8000.native.Connection is refused as a backstop. The code under test catches broad exceptions, so a refusal
+    alone could be swallowed and the test pass: every attempt is RECORDED and the test FAILS at teardown naming them.
+    Opt out: @pytest.mark.live_state (needs the real database anyway) or @pytest.mark.real_db_pool (the test is about
+    db_pool itself). A test that stubs db_pool.get_db itself replaces the recorder and is not affected."""
+    if request.node.get_closest_marker("live_state") or request.node.get_closest_marker("real_db_pool"):
+        yield
+        return
+    import sys
+    try:
+        import db_pool, pg8000.native
+    except Exception:                  # a minimal environment without the database driver has nothing to guard
+        yield
+        return
+    real = db_pool.get_db
+    if real is not _guarded_get_db:
+        _DB_GUARD["real"] = real
+    attempts = []
+    for name, mod in list(sys.modules.items()):
+        if mod is None or name == "db_pool":
+            continue
+        try:
+            names = list(vars(mod).items())
+        except TypeError:
+            continue
+        for attr, val in names:
+            if val is real:
+                monkeypatch.setattr(mod, attr, _guarded_get_db, raising=False)
+    monkeypatch.setattr(db_pool, "get_db", _guarded_get_db)
+
+    def refused(*a, **k):
+        attempts.append("pg8000 Connection()")
+        raise ConnectionError("tests may not open a database connection")
+    monkeypatch.setattr(pg8000.native, "Connection", refused)
+    _DB_GUARD["attempts"] = attempts
+    try:
+        yield
+    finally:
+        _DB_GUARD["attempts"] = None
+        _DB_GUARD["stand_in"] = None
+    if attempts:
+        pytest.fail(f"this test reached the live database {len(attempts)} time(s): {sorted(set(attempts))[:6]}",
+                    pytrace=False)
+
+
+@pytest.fixture
+def empty_database(request):
+    """For a test that is not about the database but whose code path reads config, web_store or a log table: every
+    get_db() (db_pool's and every module alias) returns an UNREACHABLE database -- each statement is recorded and then
+    raises db_pool.DatabaseUnavailable, as in CI where the placeholder credentials cannot connect -- so the code takes its
+    real failure paths. (The name is historical.) Returns the list of (sql, params) executed.
+    It does nothing for a live_state / real_db_pool test, which the guard leaves alone."""
+    executed = []
+    if _DB_GUARD["attempts"] is not None:
+        _DB_GUARD["stand_in"] = _EmptyDb(executed)
+    return executed
 
 
 @pytest.fixture(autouse=True)
