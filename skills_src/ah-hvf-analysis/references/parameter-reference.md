@@ -37,7 +37,7 @@ not a cache. All in `price_action.py` unless stated.
 | IG validation scope | UK (.L) tradeable setups only, weight-ordered, cap 15/run (report) 10/run (watch) | run_hvf_report.categorise, intraday_signals | US Yahoo feed verified clean; allowance budget |
 | IG allowance reserve | skip validation below 1,500 of 10,000/week | validate_hvf_with_ig | Verified live 2026-06-12 |
 | Validation cache | one IG fetch per ticker per day | ig_validation_log table | 2-hourly watches would burn ~5k points/day uncached |
-| Epic resolution | UK tickers MUST resolve to KA.D.* epics; scored selection, refusal alerted | ig_shim.get_epic | LAND→Gladstone Land (wrong company) incident 2026-06-12 |
+| Epic resolution | UK tickers MUST resolve to KA.D.* epics; each of .L/.T/.HK/.DE takes only its own family; US lines and depositary receipts are refused for suffixed tickers; scored selection, refusal alerted | ig_shim.get_epic | LAND→Gladstone Land (wrong company) incident 2026-06-12 |
 
 ## Execution guards (ig_shim.py / config.py)
 

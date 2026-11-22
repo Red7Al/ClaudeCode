@@ -363,10 +363,11 @@ def save_new_pick(ticker: str, investor_name: str, source: str, post_url: str):
             # from here (APPX -> Apple's code, MGRT -> Walmart's, LIBRA -> GBP/USD, TSMC -> TomCo Energy). get_epic
             # checks the company name and the listing, and caches only a match.
             import time
-            from ig_shim import get_epic, session
+            from ig_shim import get_epic, session, epic_missing_why
             session.ensure_authenticated()
             epic = get_epic(ticker)
-            log.info(f"Epic {'found' if epic else 'not resolved'}: {ticker} -> {epic}")
+            log.info(f"Epic found: {ticker} -> {epic}" if epic
+                     else f"Epic not resolved: {ticker} -> {epic} ({epic_missing_why(ticker)})")
             time.sleep(0.3)
     except Exception as e:
         log.warning(f"Epic lookup failed for {ticker}: {e}")

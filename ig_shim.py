@@ -192,6 +192,7 @@
 
 import os
 import hashlib
+import re
 from dotenv import load_dotenv; load_dotenv(override=True)
 import math
 import time
@@ -1019,8 +1020,7 @@ def describe_size_skip(ticker: str, epic: str) -> str:
     if not epic:
         # No IG epic was found (get_epic refused or found nothing). Keeps "calculated size is 0" so notify still
         # classes it SIZE_ZERO. Owner 2026-11-09: a wrong or missing instrument is for finding BEFORE an order.
-        _why = LAST_EPIC_WHY.pop(ticker, None) or ("get_epic returned nothing and recorded no reason (it did not raise); "
-                                                    "check epic_lookup and the run log")
+        _why = epic_missing_why(ticker)
         return (f"{ticker}: calculated size is 0 because no IG epic was found -- {_why}. No order can be placed. "
                 f"Check epic_lookup and data_quality_log; do not loosen the match.")
     skip = LAST_SIZE_SKIP.get(epic or "")
@@ -1177,32 +1177,63 @@ def get_account_info() -> dict:
 # New epics found via search are written back to the cache automatically.
 # ======================================================================================================================
 
+_NAME_STOPWORDS = {"plc", "the", "inc", "corp", "corporation", "group", "ltd", "limited",
+                   "holdings", "holding", "trust", "ord", "and", "of", "co", "24",
+                   "hours", "adr", "sa", "nv", "se", "ag", "class"}
+# Legal-form words only: dropped from BOTH names before the whole-name equality test ("NN Group N.V." == "NN Group NV");
+# "group" stays, because NN's only other word is two letters and the word-overlap test ignores those.
+_NAME_LEGAL = {"plc", "inc", "corp", "corporation", "ltd", "limited", "co", "company", "nv", "sa", "se", "ag",
+               "spa", "sas", "gmbh", "kgaa", "llc", "lp", "oyj", "asa", "bv", "srl", "and", "the", "ord", "&"}
+_NAME_LETTERS = {"ß": "ss", "ø": "o", "æ": "ae", "œ": "oe", "ł": "l", "đ": "d"}
+
+
+def _strip_marks(s: str) -> str:
+    import unicodedata
+    s = "".join(_NAME_LETTERS.get(c, c) for c in s)
+    return "".join(c for c in unicodedata.normalize("NFKD", s) if not unicodedata.combining(c))
+
+
+def _name_variants(name: str) -> list:
+    """The name as word lists under two foldings: umlaut -> digraph (Yahoo "Börse" = IG "Boerse", MEASURED on the live
+    row 'Deutsche Boerse AG') and umlaut -> base letter ("Münchener" = "Munchener"). Apostrophes stay (Domino's != Dominos). Dotted
+    abbreviations lose their dots first, so "N.V." and "S.p.A." are the words "nv" and "spa"."""
+    s = (name or "").lower().replace(chr(0x2019), "'")
+    out = []
+    for fold in (s.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue"), s):
+        f = re.sub(r"\b(?:[a-z]\.)+[a-z]?(?![a-z])", lambda m: m.group(0).replace(".", ""), _strip_marks(fold))
+        out.append([w for w in re.sub(r"[.,()]", " ", f).split()])
+    return out
+
+
 def instrument_names_match(ticker: str, ig_name: str, yahoo_name: str) -> bool:
     """
     True when an IG instrument name and a Yahoo company name plausibly refer to
     the SAME company for this ticker. Shared by get_epic verification and the
     nightly identity sweep so the rule cannot drift. Matches on:
     - any significant word in common ("Land Securities Group PLC" <-> "Land Securities")
+    - the two names equal once legal forms are dropped ("NN Group N.V." <-> "NN Group NV")
     - the ticker itself appearing as a word in either name ("IBM Corp" <-> ticker IBM)
     - the acronym of either name equalling the ticker ("International Business
       Machines" -> IBM; false-positive fix 2026-06-12)
+    Accents and transliterations are folded first (Ströer = Stroeer, L'Oréal = L'Oreal).
     """
-    _sw = {"plc", "the", "inc", "corp", "corporation", "group", "ltd", "limited",
-           "holdings", "holding", "trust", "ord", "and", "of", "co", "24",
-           "hours", "adr", "sa", "nv", "se", "ag", "class"}
+    iv, yv = _name_variants(ig_name), _name_variants(yahoo_name)
 
-    def words(s):
-        return [w for w in (s or "").lower().replace(".", " ").replace(",", " ")
-                .replace("(", " ").replace(")", " ").split() if w not in _sw]
+    def sig(variants):
+        return {w for ws in variants for w in ws if w not in _NAME_STOPWORDS and len(w) > 2}
 
-    iw, yw = words(ig_name), words(yahoo_name)
-    sig_i = {w for w in iw if len(w) > 2}
-    sig_y = {w for w in yw if len(w) > 2}
-    if sig_i and sig_y and (sig_i & sig_y):
+    def core(ws):
+        return [w for w in ws if w not in _NAME_LEGAL]
+
+    if sig(iv) & sig(yv):
+        return True
+    if any(core(a) and core(a) == core(b) for a in iv for b in yv):
         return True
     # Ticker/acronym checks use the YAHOO side only — the IG candidate being
     # validated may be literally named after the ticker while being the wrong
     # company (ASX Ltd vs ticker ASX = ASE Technology; caught in unit checks).
+    iw = {w for ws in iv for w in ws if w not in _NAME_STOPWORDS}
+    yw = [w for w in yv[0] if w not in _NAME_STOPWORDS]
     t = ticker.lower().replace(".l", "").replace("-", "")
     if t in yw and t in iw:
         return True   # both names carry the ticker word (IBM Corp <-> IBM ...)
@@ -1299,6 +1330,10 @@ _EPIC_VERIFIED_OVERRIDES = {
     # Pinned 2026-10-27 (owner: "yes"). IG names it "Apache Corp", which fails the name check against
     # "APA Corporation"; IG's price 5167.8/5179.2 is 0.997x the last close 51.90 at scale 100. NOT APA Group (ASX).
     "APA":  "SA.D.APA.DAILY.IP",      # APA Corporation (ex-Apache)
+    # Pinned 2026-11-21 (Architect ruling): Yahoo has no company name for a commodity, so the name check can never confirm
+    # it. Same epic as the cached epic_lookup row ("Oil - US Crude") and config.EPIC_MAP ("US Crude Oil (WTI)"); Yahoo OIL
+    # is CL=F (WTI futures). Old epic == new epic, measured.
+    "OIL":  "CC.D.CL.USS.IP",         # US crude (WTI)
 }
 
 
@@ -1307,42 +1342,91 @@ def _is_verified_epic(ticker: str, epic: str) -> bool:
 
 
 _YNAME_CACHE: dict = {}
+# ticker -> WHY _yahoo_name gave '' (set whenever it returns ''; removed when it finds a name). get_epic reads it so a
+# refusal says whether Yahoo was unreachable (retry later) or has no name for the symbol.
+_YNAME_WHY: dict = {}
+_WHY_UNREACHABLE = "Yahoo was unreachable (retry later)"
+_WHY_NO_NAME = "Yahoo has no company name for this symbol (a 404, or neither longName nor shortName)"
+_WHY_WEB_NO_NAME = "web tier: no scan name; identity not checked"
 
 
 def _yahoo_name(ticker: str) -> str:
-    """Yahoo company name for the EXACT ticker — used to verify an IG epic is the right
-    instrument. Memoised per process (one yfinance call per ticker). '' on any failure, in
-    which case callers skip name validation (fail-open to today's behaviour)."""
+    """Company name for the EXACT ticker -- used to verify an IG epic is the right instrument. Memoised per process
+    (one yfinance call per ticker). '' when there is none, and then _YNAME_WHY[ticker] says why: Yahoo RAISED (transport
+    failure: not cached, retried on the next call) or ANSWERED with no name (yfinance returns a thin dict, not an error,
+    for a 404: MEASURED 2026-11-21 for HAB.DE, ANSS, XRPUSD; cached). On the website the name the scan stored is used instead
+    (the GitHub jobs do not read the snapshot: that read reaches the database)."""
     if ticker in _YNAME_CACHE:
         return _YNAME_CACHE[ticker]
     # THE WEBSITE MUST NOT IMPORT yfinance (2026-10-21). It imports numpy, which is fatal on the IONOS host:
     # "Create an order" hung inside this import (stack dump on the host, measured) and the page reported
     # "Placement failed - no answer from server". The scan stored the same fact in the snapshot; with no name
-    # the identity check fails open, exactly as when Yahoo is unreachable.
+    # the identity check fails open there, exactly as when Yahoo is unreachable.
     if os.environ.get("HVF_WEB_TIER") == "1":
         from instrument_name import scan_name
         name = scan_name(ticker)
+        _set_name_why(ticker, name, _WHY_WEB_NO_NAME)
         _YNAME_CACHE[ticker] = name
         return name
-    name = ""
+    name, why, unreachable = "", _WHY_NO_NAME, False
     try:
         import yfinance as _yf
         info = _yf.Ticker(ticker).info or {}
         name = info.get("longName") or info.get("shortName") or ""
     except Exception as e:
         log.warning(f"Yahoo name lookup failed for {ticker}: {type(e).__name__}: {e} (not cached; will retry)")
-        return ""
-    _YNAME_CACHE[ticker] = name
+        why, unreachable = f"{_WHY_UNREACHABLE}: {type(e).__name__}", True
+    _set_name_why(ticker, name, why)
+    if not unreachable:
+        _YNAME_CACHE[ticker] = name
     return name
 
 
-def _wrong_market(ticker: str, epic: str) -> bool:
-    """A UK share code (KA.D.) belongs only to a London (.L) ticker. MEASURED 2026-10-26: every one of the 61 non-.L
-    rows on KA.D. codes was another listing -- 56 a different company or product (TSMC -> TomCo Energy, PRU (US
-    Prudential Financial) -> Prudential plc, FOUR (Shift4) -> 4imprint), 5 the same company listed elsewhere (HSBC,
-    0005.HK, S32.AX, FERG, WPM). Even those are wrong for an order: the levels come from the scanned listing's prices --
-    0005.HK closed 142.50 HKD the day HSBA.L closed 1,352.00p (2026-10-23) -- so they would be placed ~9.5x away."""
-    return (not ticker.endswith(".L")) and str(epic or "").startswith("KA.D.")
+def _set_name_why(ticker: str, name: str, why: str) -> None:
+    if name:
+        _YNAME_WHY.pop(ticker, None)
+    else:
+        _YNAME_WHY[ticker] = why
+
+
+# The IG share-code family of each Yahoo exchange suffix, from epic_lookup 2026-11-21: every row of these suffixes sits in
+# ONE family (.L 325 KA, .T 172 AJ, .HK 94 AC, .DE 16 ED). A suffix with more than one family has no entry (.AX: AA, AB,
+# AF, AJ).
+_SUFFIX_FAMILY = {".L": "KA.D.", ".T": "AJ.D.", ".HK": "AC.D.", ".DE": "ED.D."}
+
+
+def _is_suffixed(ticker: str) -> bool:
+    """A Yahoo exchange suffix: .L, .T or two or three letters (.HK .NS .AX); a class share (BRK.B) is not one."""
+    return ticker.endswith((".L", ".T")) or re.search(r"\.[A-Z]{2,3}$", ticker) is not None
+
+
+def _depositary(name: str) -> bool:
+    return re.search(r"\b(adr|gdr|ads)\b|\bh[- ]shares?\b", (name or "").lower()) is not None
+
+
+def _wrong_market(ticker: str, epic: str, ig_name: str = None, yahoo_name: str = "") -> bool:
+    """True when `epic` is another market's listing of this ticker and must never be traded for it.
+    - A UK share code (KA.D.) belongs only to a London (.L) ticker. MEASURED 2026-10-26: every one of the 61 non-.L
+      rows on KA.D. codes was another listing -- 56 a different company or product (TSMC -> TomCo Energy, PRU (US
+      Prudential Financial) -> Prudential plc, FOUR (Shift4) -> 4imprint), 5 the same company listed elsewhere (HSBC,
+      0005.HK, S32.AX, FERG, WPM). Even those are wrong for an order: the levels come from the scanned listing's prices --
+      0005.HK closed 142.50 HKD the day HSBA.L closed 1,352.00p (2026-10-23) -- so they would be placed ~9.5x away.
+    - The converse for a suffix with one family (_SUFFIX_FAMILY): a .L/.T/.HK/.DE ticker takes only its own family.
+    - A suffixed ticker never takes a US line (epic body ends US: ABB.NS on 'ABB Ltd - ADR', SA.D.ABBUS) -- MEASURED
+      2026-11-21: 0 of 653 suffixed epic_lookup rows has one.
+    - With `ig_name`: a depositary name (ADR, GDR, ADS, H shares) when the Yahoo name has none (M&M.NS on
+      'Mahindra & Mahindra Ltd - GDR', PK.D.MHID: the one such suffixed row, 11.5% off its close)."""
+    epic = str(epic or "")
+    if not ticker.endswith(".L") and epic.startswith("KA.D."):
+        return True
+    family = next((f for sfx, f in _SUFFIX_FAMILY.items() if ticker.endswith(sfx)), None)
+    if family and not epic.startswith(family):
+        return True
+    parts = epic.split(".")
+    if _is_suffixed(ticker) and len(parts) > 2 and parts[2].endswith("US"):
+        return True
+    return (ig_name is not None and _is_suffixed(ticker)
+            and _depositary(ig_name) and not _depositary(yahoo_name))
 
 
 PRICE_CHECK_CLOSES = 5     # P-05: the price check allows any of the last 5 stored closes (a trigger day moves 10-15%)
@@ -1352,23 +1436,20 @@ def _last_close(ticker: str):
     """The ticker's last PRICE_CHECK_CLOSES stored closes from the last 14 days (a list, oldest first; P-05, owner
     2026-11-11 -- was the single latest close: 360.AX fell 15% on its trigger day and rose 10% the next, so the one-close
     8% check refused its correct IG epic and the order was lost). Read through price_bars (the price bars file
-    when it is current, else at most ~10 rows of price_history). None when there is none -- never scanned, or no recent bar --
-    or on any error, in which case the price check is skipped exactly as the name check is without a name."""
+    when it is current, else at most ~10 rows of price_history). None when there is none -- never scanned, or no recent
+    bar. A database or file error RAISES (it used to be swallowed and read as "no close, skip the check"); get_epic names
+    it in the refusal."""
+    import price_bars
+    start = (datetime.now(timezone.utc) - timedelta(days=14)).date()
+    db = get_db()
     try:
-        import price_bars
-        start = (datetime.now(timezone.utc) - timedelta(days=14)).date()
-        db = get_db()
-        try:
-            rows = price_bars.ohlcv(db, ticker, start, None, lambda: db.run(
-                "select bar_date, open, high, low, close, volume from price_history "
-                "where ticker = :t and bar_date >= :s order by bar_date", t=ticker, s=start))
-        finally:
-            db.close()
-        closes = [float(r[4]) for r in rows or () if r[4] is not None]
-        return closes[-PRICE_CHECK_CLOSES:] or None
-    except Exception as exc:
-        log.warning(f"get_epic {ticker}: no stored close for the price check ({exc})")
-        return None
+        rows = price_bars.ohlcv(db, ticker, start, None, lambda: db.run(
+            "select bar_date, open, high, low, close, volume from price_history "
+            "where ticker = :t and bar_date >= :s order by bar_date", t=ticker, s=start))
+    finally:
+        db.close()
+    closes = [float(r[4]) for r in rows or () if r[4] is not None]
+    return closes[-PRICE_CHECK_CLOSES:] or None
 
 
 def _price_matches(market: dict, close) -> bool:
@@ -1377,12 +1458,13 @@ def _price_matches(market: dict, close) -> bool:
     wrong-instrument epics that had IG prices and stored closes: 0 accepted by the last close, 0 by any of the last 5;
     the nearest sat 11.5% (M&M.NS) and 13.2% (3382.T, best of 5) from a close, outside the 8% band. MEASURED 2026-10-26: 13 scanned tickers sat on another instrument's code that the name check let
     through -- APA (Apache, close 51.90) on APA Group at 1,148 (22x); ICGT.L (1,374p) on ICG PLC at 1,799 (1.31x);
-    ISHG on SHY's code (1.10 after /100). Apache's own code was 5,173.5 (0.997 after /100). True when IG gives no
-    price: no evidence either way."""
+    ISHG on SHY's code (1.10 after /100). Apache's own code was 5,173.5 (0.997 after /100). False when IG gives no
+    price or there is no close: nothing then confirms the instrument, so it is not used (2026-11-21: it used to read
+    "no evidence" as a pass; the China A50 index IX.D.XINHUA.DFB.IP has no price)."""
     bid, offer = market.get("bid"), market.get("offer")
     px = [float(p) for p in (bid, offer) if p]
     if not px or not close:
-        return True
+        return False
     mid = sum(px) / len(px)
     closes = close if isinstance(close, (list, tuple)) else [close]
     return any(0.92 <= mid / c / scale <= 1.08 for c in closes if c for scale in (1, 100, 0.01))
@@ -1444,10 +1526,31 @@ def _epic_alert(ticker: str, summary: str, detail: str = "", always: bool = Fals
         pass
 
 
+def _own_market(ticker: str, markets: list, y_name: str) -> list:
+    """The search results that can be this ticker's listing: not another market's family, not a US line for a suffixed
+    ticker, not a depositary receipt the Yahoo name does not describe (_wrong_market). Filtered BEFORE the best is
+    chosen, so a refused code can never win on score. When everything is refused, one alert goes through the live gate."""
+    kept = [m for m in markets if not _wrong_market(ticker, m.get("epic", ""), m.get("instrumentName", ""), y_name)]
+    if markets and not kept:
+        log.error(f"get_epic {ticker}: all {len(markets)} IG results are another market's listing -- refusing")
+        _epic_alert(ticker, f"{ticker}: every IG result is another market's listing (non-UK epic, US line or ADR/GDR) -- "
+                            f"NOT cached, instrument skipped. Verify manually.",
+                    detail=str([(m.get("epic"), str(m.get("instrumentName")).replace("<", "(").replace(">", ")"))
+                                for m in markets[:6]]))   # IG's names go into an HTML email part: no tags
+    return kept
+
+
 def _no_epic(ticker: str, why: str):
     """get_epic gives up: remember WHY for the alert, return None."""
     LAST_EPIC_WHY[ticker] = why
     return None
+
+
+def epic_missing_why(ticker: str) -> str:
+    """WHY get_epic returned None for `ticker` on this thread (what _no_epic recorded), or the line saying it recorded
+    none. CONSUMES the entry: call it once per failure and keep the string."""
+    return LAST_EPIC_WHY.pop(ticker, None) or ("get_epic returned nothing and recorded no reason (it did not raise); "
+                                               "check epic_lookup and the run log")
 
 
 def get_epic(ticker: str) -> Optional[str]:
@@ -1503,13 +1606,18 @@ def get_epic(ticker: str) -> Optional[str]:
         # unchecked, so stale wrong rows (AXP→AXP Energy, SPGI→Spain 35, TGT→11880 SA …) were
         # served and could be TRADED. Trust the row only when: Yahoo has no name (FX/index/
         # commodity), it's a verified override, or the IG and Yahoo names match.
-        if _wrong_market(ticker, cached_epic) and not _is_verified_epic(ticker, cached_epic):
+        if _wrong_market(ticker, cached_epic, cached_desc, y_name) and not _is_verified_epic(ticker, cached_epic):
             # Refused, NOT purged: removing the existing wrong rows is the owner's call (2026-10-26).
-            log.error(f"get_epic {ticker}: cached epic {cached_epic} ({cached_desc!r}) is a UK share code for a "
-                      f"non-London ticker -- wrong listing, refusing")
-            return _no_epic(ticker, "the cached epic is a UK share code for a non-London ticker (wrong listing), so it was refused")
+            log.error(f"get_epic {ticker}: cached epic {cached_epic} ({cached_desc!r}) is another market's listing "
+                      f"(wrong family, a US line or a depositary receipt) -- wrong listing, refusing")
+            return _no_epic(ticker, "the cached epic is another market's listing for this ticker (wrong listing), so it was refused")
         if (not y_name) or _is_verified_epic(ticker, cached_epic) \
                 or instrument_names_match(ticker, cached_desc or "", y_name):
+            if not y_name:
+                # Fail-open on a HIT (Architect 2026-11-21): the row works today; refusing it for want of a name would
+                # turn a Yahoo outage into no orders at all. Say why the identity was not checked.
+                log.warning(f"get_epic {ticker}: cached epic {cached_epic} used UNCHECKED -- "
+                            f"{_YNAME_WHY.get(ticker, 'no company name')}")
             log.info(f"Epic cache hit: {ticker} → {cached_epic}")
             return cached_epic
         # Mismatch → never trade the wrong instrument. Alert, purge the bad row, then re-resolve.
@@ -1530,6 +1638,17 @@ def get_epic(ticker: str) -> Optional[str]:
         except Exception as e:
             log.warning(f"get_epic {ticker}: could not purge bad cache row: {e}")
         # fall through to Step 2 (IG search, now with a working identity guard)
+
+    # Step 1b — no company name and no pin: an IG search result cannot be identity-checked, and choosing from it
+    # unchecked is how AXP became AXP Energy (Architect 2026-11-21). The website cannot ask Yahoo (numpy), so there it
+    # stays open, with the cause logged; everywhere else the miss is refused and says why.
+    if not y_name:
+        why = _YNAME_WHY.get(ticker, "no company name")
+        if os.environ.get("HVF_WEB_TIER") == "1":
+            log.warning(f"get_epic {ticker}: {why}")
+        else:
+            log.error(f"get_epic {ticker}: not in the cache and {why} -- cannot check an IG result's identity, refusing")
+            return _no_epic(ticker, f"not in the cache, and {why}, so an IG search result could not be identity-checked")
 
     # Step 2 — Cache miss: search IG. Try any human-provided name aliases first (user 2026-07-03),
     # then the normalized ticker — the first term that returns markets wins.
@@ -1556,15 +1675,19 @@ def get_epic(ticker: str) -> Optional[str]:
     # match in the epic body, DFB (no expiry) preferred; .L tickers strongly
     # prefer KA.D. and penalise US epics.
     is_uk = ticker.endswith(".L")
+    body = normalized.replace(".", "").replace("-", "")
+    hk = re.fullmatch(r"0*(\d+)\.HK", normalized)
+    if hk:
+        body = f"{int(hk.group(1))}HK"  # IG writes Hong Kong codes without the leading zeros: 0836.HK is AC.D.836HK
 
     def _epic_score(m):
         epic_str = m.get("epic", "")
         parts    = epic_str.split(".")
         mid      = parts[2] if len(parts) > 2 else ""
         s = 0
-        if mid == normalized.replace(".", "").replace("-", ""):
+        if mid == body:
             s += 4                      # exact ticker in epic body
-        elif mid == normalized.replace(".", "").replace("-", "") + "US":
+        elif mid == body + "US":
             s += 2 if not is_uk else -8 # US listing of the same ticker
         if m.get("expiry") == "DFB":
             s += 2                      # rolling daily bet, what we trade
@@ -1572,6 +1695,10 @@ def get_epic(ticker: str) -> Optional[str]:
             s += 8                      # UK share family
         return s
 
+    markets = _own_market(ticker, markets, y_name)
+    if not markets:
+        return _no_epic(ticker, "every IG result is another market's listing of this ticker (wrong family, a US line "
+                                "or a depositary receipt), so none was used")
     best = max(markets, key=_epic_score)
 
     # ── Identity verification (ASX 2026-06-12: ticker 'ASX' = ASE Technology
@@ -1581,7 +1708,7 @@ def get_epic(ticker: str) -> Optional[str]:
     # at least one significant word with the Yahoo company name for this
     # ticker. If the best-scored candidate fails, prefer the best candidate
     # that DOES match; if none match, refuse + alert rather than guess.
-    # Skipped when Yahoo has no name (FX/indices/commodities tickers).
+    # Skipped only on the website with no scan name (a miss with no name is refused above; a pin returned at Step 0).
     if y_name:
         if not instrument_names_match(ticker, best.get("instrumentName", ""), y_name):
             matching = [m for m in markets
@@ -1607,10 +1734,10 @@ def get_epic(ticker: str) -> Optional[str]:
                                                    version="1").get("markets", [])
                     except Exception as e:
                         log.warning(f"get_epic {ticker}: name search '{name_term}' failed: {e}")
-                name_match = [m for m in name_markets
+                name_match = [m for m in _own_market(ticker, name_markets, y_name)
                               if instrument_names_match(ticker, m.get("instrumentName", ""), y_name)]
                 if name_match:
-                    markets = name_markets           # so the downstream UK-epic check sees the right set
+                    markets = name_markets           # so the price check below sees the right set
                     best = max(name_match, key=_epic_score)
                     log.info(f"get_epic {ticker}: resolved via company-name search '{name_term}' → "
                              f"{best.get('epic')} ({best.get('instrumentName')})")
@@ -1630,8 +1757,21 @@ def get_epic(ticker: str) -> Optional[str]:
 
     # Price check (owner 2026-10-26, "ok, please progress"): a name that shares one word is not the instrument. Only
     # when the ticker has a recent stored close; the candidates are the same ones the name check allowed.
-    close = _last_close(ticker)
-    if close and not _price_matches(best, close):
+    try:
+        close = _last_close(ticker)
+    except Exception as e:
+        # Only the exception TYPE goes into the refusal and the message: its text can carry the database host, port or user
+        # (pg8000 connect errors), and the refusal reaches the browser ("Create an order") and the missed-trade email. The
+        # full error is in the log via exc_info, which the web order page's log capture (getMessage) never sees.
+        log.error(f"get_epic {ticker}: could not read the stored closes for the price check: {type(e).__name__} "
+                  f"(full error in the traceback)", exc_info=True)
+        return _no_epic(ticker, f"the stored closes for the price check could not be read ({type(e).__name__}; "
+                                f"the log has the full error)")
+    if not close:
+        log.error(f"get_epic {ticker}: no stored close in the last 14 days -- the price check cannot confirm "
+                  f"{best.get('epic')}; refusing (not cached)")
+        return _no_epic(ticker, "there is no stored close in the last 14 days, so the IG price cannot confirm the instrument")
+    if not _price_matches(best, close):
         priced = [m for m in markets if _price_matches(m, close)
                   and (not y_name or instrument_names_match(ticker, m.get("instrumentName", ""), y_name))]
         if priced:
@@ -1648,27 +1788,8 @@ def get_epic(ticker: str) -> Optional[str]:
             except Exception:
                 pass
             log.error(f"get_epic {ticker}: best match {best.get('epic')} ({best.get('instrumentName')}, bid "
-                      f"{best.get('bid')}) is not at the last close {close} -- refusing (not cached)")
-            return _no_epic(ticker, "the best IG match is not at the last close, so its identity is not confirmed")
-
-    if is_uk and not best.get("epic", "").startswith("KA.D."):
-        # A .L ticker that cannot resolve to a UK share epic is a wrong-
-        # instrument risk — surface loudly and refuse to cache it.
-        try:
-            _epic_alert(ticker,
-                               f"UK ticker {ticker} resolved to non-UK epic "
-                               f"{best.get('epic')} ({best.get('instrumentName')}) — NOT cached, "
-                               f"instrument skipped. Verify manually.",
-                               detail=str([m.get('epic') for m in markets[:6]]))
-        except Exception:
-            pass
-        log.error(f"get_epic {ticker}: best match {best.get('epic')} is not a UK share epic — refusing")
-        return _no_epic(ticker, "the best IG match is not a UK share epic for a UK ticker")
-
-    if _wrong_market(ticker, best.get("epic", "")):
-        log.error(f"get_epic {ticker}: best match {best.get('epic')} ({best.get('instrumentName')}) is a UK share "
-                  f"code for a non-London ticker -- wrong listing, refusing (not cached)")
-        return _no_epic(ticker, "the best IG match is a UK share code for a non-London ticker (wrong listing)")
+                      f"{best.get('bid')}) is not at the last close {close} (or IG gave no price) -- refusing (not cached)")
+            return _no_epic(ticker, "the best IG match is not at the last close or has no IG price, so its identity is not confirmed")
 
     epic        = best["epic"]
     description = best.get("instrumentName", "")
@@ -2087,11 +2208,12 @@ def open_trade(
     # Step 2 — Resolve epic
     epic = get_epic(ticker)
     if not epic:
-        log.error(f"Cannot trade {ticker} — no epic found")
+        _why = epic_missing_why(ticker)
+        log.error(f"Cannot trade {ticker} — no epic found: {_why}")
         try:
             from notify import alert_missed_trade
             alert_missed_trade(ticker, direction,
-                               "No IG epic found — check epic_lookup / config.EPIC_MAP (a wrong "
+                               f"No IG epic found -- {_why}. Check epic_lookup / config.EPIC_MAP (a wrong "
                                "epic 404s and silently blocks the instrument)", signal_summary)
         except Exception:
             pass
@@ -2939,11 +3061,12 @@ def place_working_order(
     # Step 2 — resolve epic
     epic = get_epic(ticker)
     if not epic:
-        log.error(f"Cannot place working order for {ticker} — no epic found")
+        _why = epic_missing_why(ticker)
+        log.error(f"Cannot place working order for {ticker} — no epic found: {_why}")
         try:
             from notify import alert_missed_trade
             alert_missed_trade(ticker, direction,
-                               "[working order] No IG epic found — check epic_lookup / config.EPIC_MAP",
+                               f"[working order] No IG epic found -- {_why}. Check epic_lookup / config.EPIC_MAP",
                                signal_summary)
         except Exception:
             pass

@@ -417,6 +417,11 @@ Re-generate with `python build_data_dictionary.py`. The column lists, sizes and 
 
 **Watch out** — The identity check here is what catches an epic mapped to the WRONG COMPANY.
 
+- 2026-11-21 (`ig_shim.get_epic`): `instrument_names_match` folds accents and transliterations (Stroeer = Ströer, L'Oreal = L'Oréal) and accepts two names equal once legal forms are dropped (NN Group N.V. = NN Group NV).
+- `_wrong_market` refuses a candidate that is another market's family (.L takes KA.D., .T AJ.D., .HK AC.D., .DE ED.D.), a US line for a suffixed ticker, or an ADR, GDR, ADS or H-share name when the Yahoo name has none (suffixed tickers only; US-listed ADRs such as ARM, NOK and TSM are not refused).
+- A cache miss with no Yahoo company name and no pin is refused and the reason reads `No IG epic found -- <cause>` (`ig_shim.epic_missing_why` returns the cause, consuming it). A cache hit with no name is used and logged UNCHECKED. The website stays open (no yfinance there). A missing IG price or missing stored close fails the price check.
+- OIL is pinned to `CC.D.CL.USS.IP` (US crude, WTI; same as the cached row and `config.EPIC_MAP`) because Yahoo has no company name for a commodity (2026-11-21).
+
 | column | type | null |
 |---|---|---|
 | `ticker` | text | no |

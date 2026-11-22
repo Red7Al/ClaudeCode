@@ -1600,10 +1600,10 @@ def validate_hvf_with_ig(ticker: str, result: dict, min_allowance: int = 1500) -
         log.debug(f"IG validation cache read failed ({e}) — validating fresh")
 
     try:
-        from ig_shim import get_epic, get_prices_df
+        from ig_shim import get_epic, get_prices_df, epic_missing_why
         epic = get_epic(ticker)
         if not epic:
-            log.info(f"IG validation {ticker}: no epic — skipped")
+            log.info(f"IG validation {ticker}: no epic — skipped ({epic_missing_why(ticker)})")
             return result
 
         # Enough candles to reach back to H1 (+buffer), capped at 240

@@ -173,8 +173,9 @@ def test_site_cached_epic_mismatch_is_always_emailed(monkeypatch, live, expected
 
 
 def test_a_resolvable_ticker_raises_no_alert_at_all(monkeypatch):
-    calls = _drive(monkeypatch, ticker="FOO", y_name="Foo Corp", live=(),
-                   markets=[{"epic": "UB.D.FOOUS.DAILY.IP", "instrumentName": "Foo Corp", "expiry": "DFB"}])
+    calls = _drive(monkeypatch, ticker="FOO", y_name="Foo Corp", live=(), close=100.0,
+                   markets=[{"epic": "UB.D.FOOUS.DAILY.IP", "instrumentName": "Foo Corp", "expiry": "DFB",
+                             "bid": 100.0, "offer": 100.2}])
     monkeypatch.setattr(ig_shim, "get_db", lambda: _FakeDb(rows=[]))
     assert ig_shim.get_epic("FOO") == "UB.D.FOOUS.DAILY.IP"
     assert calls == []

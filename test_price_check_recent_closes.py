@@ -21,9 +21,11 @@ def test_nearest_wrong_instruments_are_still_refused():
     assert not ig_shim._price_matches({"bid": 1873.87, "offer": 1873.87}, [2160.0, 2175.0, 2180.5])
 
 
-def test_a_scalar_close_still_works_and_no_price_is_no_evidence():
+def test_a_scalar_close_still_works_and_no_price_is_refused():
+    """2026-11-21: an IG result with no price confirms nothing (China A50 IX.D.XINHUA.DFB.IP has none), so it is no pass."""
     assert ig_shim._price_matches({"bid": 10.0, "offer": 10.0}, 10.3) is True
-    assert ig_shim._price_matches({"bid": None, "offer": None}, [5.0]) is True
+    assert ig_shim._price_matches({"bid": None, "offer": None}, [5.0]) is False
+    assert ig_shim._price_matches({}, [5.0]) is False
 
 
 def test_last_close_returns_at_most_five_closes_oldest_first(monkeypatch):
@@ -66,7 +68,7 @@ def test_any_close_suffices_but_a_price_off_every_close_is_refused():
 def test_tuple_and_zero_or_none_entries_are_tolerated():
     assert ig_shim._price_matches(_m(100.0), (0, 99.0))
     assert not ig_shim._price_matches(_m(100.0), (0, 50.0))
-    assert ig_shim._price_matches(_m(100.0), [])      # no closes = no evidence (guard skipped, as before)
+    assert not ig_shim._price_matches(_m(100.0), [])  # no closes confirms nothing (get_epic refuses before asking)
 
 
 def test_mid_of_bid_and_offer_is_used():
@@ -84,7 +86,7 @@ def test_six_closes_back_is_not_considered(monkeypatch):
     assert closes == [10.0] * 5 and not ig_shim._price_matches(_m(100.0), closes)
 
 
-def test_last_close_none_when_no_bars_or_error(monkeypatch):
+def test_last_close_none_when_no_bars_and_a_read_error_is_raised_not_swallowed(monkeypatch):
     import price_bars
     monkeypatch.setattr(price_bars, "ohlcv", lambda *a: [])
     class _Db:
@@ -92,4 +94,5 @@ def test_last_close_none_when_no_bars_or_error(monkeypatch):
     monkeypatch.setattr(ig_shim, "get_db", lambda: _Db())
     assert ig_shim._last_close("X") is None
     monkeypatch.setattr(price_bars, "ohlcv", lambda *a: (_ for _ in ()).throw(RuntimeError("x")))
-    assert ig_shim._last_close("X") is None
+    with pytest.raises(RuntimeError, match="x"):
+        ig_shim._last_close("X")

@@ -28,6 +28,7 @@ def _wire(monkeypatch, db, markets, yahoo_name):
     monkeypatch.setattr(ig_shim, "_EPIC_VERIFIED_OVERRIDES", {})     # these tests are about the search, not the pins
     monkeypatch.setattr(ig_shim, "_heuristic_epic", lambda t: None)
     monkeypatch.setattr(ig_shim, "_yahoo_name", lambda t: yahoo_name)
+    monkeypatch.setattr(ig_shim, "_epic_alert", lambda *a, **k: None)    # the alert path reaches notify -> the database
     monkeypatch.setattr(ig_shim.session, "get", lambda path, params=None, version=None: {"markets": markets})
 
 
@@ -50,8 +51,8 @@ def test_a_cached_wrong_listing_is_refused_and_not_deleted(monkeypatch):
 
 
 def test_a_london_ticker_still_takes_its_london_code(monkeypatch):
-    db = _Db()
-    _wire(monkeypatch, db, [PRU_PLC], "Prudential plc")
+    db = _Db(bars=_bar(1180.0))
+    _wire(monkeypatch, db, [{**PRU_PLC, "bid": 1180.0, "offer": 1181.0}], "Prudential plc")
     assert ig_shim.get_epic("PRU.L") == "KA.D.PRU.DAILY.IP"
 
 
@@ -113,8 +114,10 @@ def test_no_listing_near_the_price_is_refused_and_not_cached(monkeypatch):
     assert not [s for s in db.sql if s.lstrip().lower().startswith("insert into epic_lookup")], "a wrong row was cached"
 
 
-def test_without_a_stored_close_the_search_is_unchanged(monkeypatch):
-    """A social pick that is never scanned has no close; nothing to check against."""
+def test_without_a_stored_close_the_epic_is_refused_with_the_cause(monkeypatch):
+    """2026-11-21: a never-scanned ticker has no close, so nothing confirms the IG result; it is refused (it used to pass)."""
     db = _Db()
-    _wire(monkeypatch, db, [PRU_PLC], "Prudential plc")
-    assert ig_shim.get_epic("PRU.L") == "KA.D.PRU.DAILY.IP"
+    _wire(monkeypatch, db, [{**PRU_PLC, "bid": 1180.0, "offer": 1181.0}], "Prudential plc")
+    assert ig_shim.get_epic("PRU.L") is None
+    assert "no stored close" in ig_shim.LAST_EPIC_WHY["PRU.L"]
+    assert not [s for s in db.sql if s.lstrip().lower().startswith("insert into epic_lookup")]

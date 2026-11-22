@@ -1,7 +1,7 @@
 # Status — the only status document
 
 **Update this file at the end of every session** instead of writing a new handover. Every figure carries
-the command that produced it or says it is unproven. Last updated **2026-10-20 (pushed 548b6cc)**.
+the command that produced it or says it is unproven. Last updated **2026-11-21 (pushed 6690746)**.
 
 **CHANGE FREEZE until Fri 2026-11-06 20:00 UK (owner 2026-11-02)** after three changes: new-user request email alert, 100 extra instruments, better insights. Faults in live trading are still fixed (owner: "faults in live trading should be fixed - product enhancements can wait"). See `CLAUDE.md` Constraints.
 
@@ -10,10 +10,13 @@ the command that produced it or says it is unproven. Last updated **2026-10-20 (
 ## 0b. 2026-11-21 -- epics: owner's target and open decisions
 
 - Owner 2026-11-21, Q2: "it should not fail an order as every instrument should have an epic in IG". Target: a complete, verified IG epic for every scanned instrument (see `CLAUDE.md` "No market is scan-only"). **Decided 2026-11-21 (owner, verbatim): "2 - try to resolve andorder, failing that email the account ewmail".** The order-time backstop: the system tries to resolve the epic and place the order, and only if that fails emails the account holder the order details. Existing rules unchanged: check IG for the order before any retry (CLAUDE.md, 2026-11-14); the 2x risk cap stands. Not yet built. **Still open:** whether an instrument IG does not list stays in the universe or is removed.
-- Epic recurrence (order attempts still finding no epic) is being diagnosed by `data-quality`: `ChangeRequests/20261116.txt` line 18. No cause is recorded yet.
+- Epic recurrence (order attempts still finding no epic) is being diagnosed by `data-quality`: `ChangeRequests/20261121.txt` line 1. No cause is recorded yet.
 - ~~Pending owner decision: two new SMEs and a rule-traceability duty~~ -- decided, see the next bullet.
+- Owner 2026-11-21: delegated PM+SME decisions; lineage check before any instrument removal; step 0 of the epic-not-available plan recorded | `ChangeRequests/20261121.txt` line 1
+- Owner 2026-11-21, to Instrument Master question 1 (where the epic mapping search starts): "1 - Asia last". Epic mapping and the IG search run non-Asian groups first (FTSE 100, NASDAQ 100, S&P 500, FTSE 250, DAX, Euronext, then FX/commodities/indices/bonds/crypto), then ASX, then Asia (Hong Kong, Nikkei 225, BSE, NSE, SZSE, SSE; 338 of the 648). The ASX placement and the order within groups are PM+SME decisions. No IG read is scheduled until the IG allowance refusal (HTTP 403 exceeded-account-allowance, about 25 GETs, seen by Instrument Master) is understood by the Reliability SME. | `ChangeRequests/20261121.txt` line 1
 - The Q1 relaxation of the off-hours rule is noted beside the 11-08 rows in section 0.
 - **2026-11-21: the owner approved the two SMEs and the duty ("2 - that i sfine").** Created: `.claude/agents/ig-integration.md`, `.claude/agents/instrument-master.md`; duty "rule traceability" added to `.claude/agents/project-manager.md`; named in `CLAUDE.md` Rule 2. Definitions only; not yet used on a real task and not yet committed (awaiting the usual review).
+- 2026-11-21 Owner rule: data-quality reports data discrepancies that are not getting resolved to the PM, who resolves them with developer and ig-integration. State: recorded (`ChangeRequests/20261121.txt` line 1); SME wording inserted, uncommitted; the threshold for "not resolved" is awaiting an owner answer; nothing enforces it yet.
 
 ## 0a. 2026-11-11 -- Closing Window pause + risk-cap miss email
 
@@ -209,6 +212,9 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
   `KA.D.GPE` (ICG Graphite Enterprise Trust), RMD -> `SG.D.RMD` (ResMed US); APA is refused (IG names it "Apache
   Corp", the name check wants "APA Corporation") -- it has no code until a verified pin is added. 26 codes are
   still shared, all by tickers outside this decision.
+  2026-11-21 (step 3, `ig_shim.get_epic`): the "no close, no check" above is superseded. A missing IG price or a missing stored
+  close now FAILS the price check (`_price_matches` returns False); `_last_close` raises on a database or file error and
+  `get_epic` names that error in the refusal. A cache miss with no Yahoo company name and no pin is refused (website excepted).
 - Owner 2026-10-27 "yes": APA is pinned to `SA.D.APA.DAILY.IP` (Apache Corp, 24 Hours) in
   `ig_shim._EPIC_VERIFIED_OVERRIDES` -- IG's price 5167.8/5179.2 vs the last close 51.90 (x100, 0.997).
 - MEASURED 10-27: 8 pinned tickers' `epic_lookup` rows differ from their pins (FLY, GLD, LUNR, MSTR, PYPL, QBTS,
@@ -220,6 +226,8 @@ still fail a run (red) while logins are paused; Cron Watch emails once.
   620 no close (name check only), 6 differ from the pin, 1 no IG price, 5 no IG answer. 475 codes left; the list
   goes to the owner before any row changes. Owner "ok, please progress": the 8 pin rows are replaced once their pins
   are checked live (PYPL x99.5, MSTR x99.2 so far; ETH, SPCX, SYM answered but have no close).
+  2026-11-21 note: the "620 no close (name check only)" above is no longer how `get_epic` behaves -- on a cache miss
+  with no stored close the price check now refuses (`_price_matches` returns False; see the 2026-11-21 line after the 10-26 bullet).
 - The nightly Data Quality Audit's identity sweep already flags wrong codes (10-26 run 40411009387: 2,192 checked,
   94 name mismatches, incl. AAL -> Alfabs Australia, DJT -> the Dow, EOSE -> Ease2pay) but reports only to Slack
   and returns early because Slack is off (`run_data_quality_audit.py:230`). Nobody has received it. Fixed: the

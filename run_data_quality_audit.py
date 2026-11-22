@@ -96,7 +96,7 @@ def _pick_batch(limit: int) -> list:
 def _audit_ticker(ticker: str) -> dict:
     """Compare Yahoo vs IG daily candles for one ticker. Returns the audit row dict."""
     import yfinance as yf
-    from ig_shim import get_epic, get_prices_df
+    from ig_shim import get_epic, get_prices_df, epic_missing_why
 
     row = {"ticker": ticker, "days_compared": 0, "close_max_dev_pct": None,
            "phantom_high_wicks": 0, "phantom_low_wicks": 0,
@@ -105,7 +105,7 @@ def _audit_ticker(ticker: str) -> dict:
     epic = get_epic(ticker)
     if not epic:
         row["verdict"] = "NO_EPIC"
-        row["detail"]  = "ticker has no IG epic (not tradeable on IG, or UK epic refused)"
+        row["detail"]  = f"ticker has no IG epic: {epic_missing_why(ticker)}"
         return row
 
     # ── Identity reconciliation (recon register #4): the IG instrument NAME
@@ -341,12 +341,12 @@ def _verify_epics(tickers: list):
     """Read-only end-to-end pin check (user 2026-06-24): for each ticker, run get_epic() then read
     the IG instrument NAME at that epic, so a pin is confirmed to resolve to the intended company.
     No trade, no write."""
-    from ig_shim import get_epic, session
+    from ig_shim import get_epic, session, epic_missing_why
     for t in tickers:
         try:
             epic = get_epic(t)
             if not epic:
-                print(f"  {t:<8} -> (no epic resolved)")
+                print(f"  {t:<8} -> (no epic resolved: {epic_missing_why(t)})")
                 continue
             mkt  = session.get(f"/markets/{epic}", version="3")
             name = (mkt.get("instrument", {}) or {}).get("name", "?")

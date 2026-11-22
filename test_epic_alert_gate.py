@@ -90,7 +90,7 @@ def test_get_epic_itself_routes_an_unlisted_uk_share_through_the_gate(monkeypatc
     monkeypatch.setattr(ig_shim, "_EPIC_VERIFIED_OVERRIDES", {})
     monkeypatch.setattr(ig_shim, "_heuristic_epic", lambda t: None)
     monkeypatch.setattr(ig_shim, "_yahoo_name", lambda t: "Shawbrook Group plc")
-    monkeypatch.setattr(ig_shim, "_last_close", lambda t: None)
+    monkeypatch.setattr(ig_shim, "_last_close", lambda t: [100.0])
     monkeypatch.setattr(ig_shim.session, "get", lambda path, params=None, version=None: {"markets": [
         {"epic": "KC.D.SHAWLN.DAILY.IP", "instrumentName": "Shawbrook Group PLC", "expiry": "DFB",
          "instrumentType": "SHARES"}]})
@@ -108,7 +108,9 @@ def test_no_get_epic_alert_bypasses_the_gate():
     src = Path(ig_shim.__file__).read_text(encoding="utf-8")
     body = src[src.index("def get_epic(") : src.index("\ndef ", src.index("def get_epic(") + 10)]
     assert not re.search(r'alert_system_error\(\s*"EPIC_LOOKUP"', body)
-    assert body.count("_epic_alert(ticker") == 4
+    assert body.count("_epic_alert(ticker") == 3          # the fourth, "every result is another market's", is in _own_market
+    own = src[src.index("def _own_market(") : src.index("\ndef ", src.index("def _own_market(") + 10)]
+    assert own.count("_epic_alert(ticker") == 1
 
 
 def test_the_audit_and_get_epic_share_one_definition_of_live(monkeypatch):
