@@ -56,6 +56,26 @@ create table if not exists epic_lookup (
 
 
 -- ---------------------------------------------------------------------------
+-- epic_lookup_removed  (epics removed from epic_lookup as the wrong instrument; live shape, no primary key, RLS on)
+-- ---------------------------------------------------------------------------
+create table if not exists epic_lookup_removed (
+    ticker       text,
+    epic         text,
+    description  text,
+    currency     text,
+    market_type  text,
+    last_seen    timestamptz,
+    removed_at   timestamptz,
+    reason       text,
+    cleared_at   timestamptz,
+    cleared_note text
+);
+alter table epic_lookup_removed enable row level security;
+create index if not exists epic_lookup_removed_ticker_open_idx
+    on epic_lookup_removed (ticker, removed_at desc) where cleared_at is null;
+
+
+-- ---------------------------------------------------------------------------
 -- positions  (open trades)
 -- ---------------------------------------------------------------------------
 create table if not exists positions (

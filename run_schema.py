@@ -632,6 +632,28 @@ MIGRATIONS = [
         "CREATE INDEX IF NOT EXISTS idx_login_attempts_last ON login_attempts(last_attempt DESC)"
     ),
 
+    # ── epic_lookup_removed: rows get_epic's removal path keeps (live shape, 2026-11-22: all nullable, no key) ──
+    # P-25. instrument-master clears a row with cleared_at; get_epic Step 1c reads the uncleared ones. NO primary key.
+    (
+        "epic_lookup_removed: create",
+        "CREATE TABLE IF NOT EXISTS epic_lookup_removed (ticker text, epic text, description text, currency text, "
+        "market_type text, last_seen timestamptz, removed_at timestamptz, reason text)"
+    ),
+    (
+        "epic_lookup_removed: row level security",
+        "ALTER TABLE epic_lookup_removed ENABLE ROW LEVEL SECURITY"
+    ),
+    (
+        "epic_lookup_removed: add cleared_at, cleared_note",
+        "ALTER TABLE epic_lookup_removed ADD COLUMN IF NOT EXISTS cleared_at timestamptz, "
+        "ADD COLUMN IF NOT EXISTS cleared_note text"
+    ),
+    (
+        "epic_lookup_removed: index uncleared by ticker",
+        "CREATE INDEX IF NOT EXISTS epic_lookup_removed_ticker_open_idx ON epic_lookup_removed (ticker, removed_at DESC) "
+        "WHERE cleared_at IS NULL"
+    ),
+
 ]
 
 
