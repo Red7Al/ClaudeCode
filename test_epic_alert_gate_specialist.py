@@ -23,6 +23,8 @@ class _FakeDb:
         self.sql.append(sql)
         if self.raise_on_run:
             raise RuntimeError("boom")
+        if "from epic_lookup_removed" in sql:
+            return []                                  # get_epic Step 1c: nothing removed for this ticker
         if self.first_select is not None and sql.lstrip().startswith("select epic"):
             return self.first_select
         return self.rows

@@ -108,7 +108,7 @@ def test_no_get_epic_alert_bypasses_the_gate():
     src = Path(ig_shim.__file__).read_text(encoding="utf-8")
     body = src[src.index("def get_epic(") : src.index("\ndef ", src.index("def get_epic(") + 10)]
     assert not re.search(r'alert_system_error\(\s*"EPIC_LOOKUP"', body)
-    assert body.count("_epic_alert(ticker") == 3          # the fourth, "every result is another market's", is in _own_market
+    assert body.count("_epic_alert(ticker") == 4          # Step 1c's ENFORCE refusal is the fourth; the fifth, "every result is another market's", is in _own_market
     own = src[src.index("def _own_market(") : src.index("\ndef ", src.index("def _own_market(") + 10)]
     assert own.count("_epic_alert(ticker") == 1
 

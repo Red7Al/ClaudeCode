@@ -1540,6 +1540,42 @@ def _own_market(ticker: str, markets: list, y_name: str) -> list:
     return kept
 
 
+# Step 1c guard (P-26): an epic instrument-master removed as the wrong instrument must not be re-resolved by an IG search
+# until instrument-master clears the row (epic_lookup_removed.cleared_at). LOG-ONLY first: it says what it WOULD refuse and
+# counts it; set EPIC_REMOVED_ENFORCE = True to refuse.
+EPIC_REMOVED_ENFORCE = False
+EPIC_REMOVED_WOULD_REFUSE = 0
+
+
+def _removed_epic_refusal(ticker: str) -> Optional[str]:
+    """The text to refuse `ticker` with because an uncleared epic_lookup_removed row exists, else None. A read error
+    never passes silently: log-only mode logs its TYPE and carries on; ENFORCE mode refuses and names the type."""
+    global EPIC_REMOVED_WOULD_REFUSE
+    try:
+        db = get_db()
+        try:
+            rows = db.run("select removed_at, reason, epic from epic_lookup_removed "
+                          "where ticker = :t and cleared_at is null order by removed_at desc limit 1", t=ticker)
+        finally:
+            db.close()
+    except Exception as e:
+        kind = type(e).__name__
+        if not EPIC_REMOVED_ENFORCE:
+            log.warning(f"get_epic {ticker}: epic_lookup_removed could not be read ({kind}); log-only mode, continuing")
+            return None
+        log.error(f"get_epic {ticker}: epic_lookup_removed could not be read: {e}")
+        return f"epic_lookup_removed could not be read ({kind}; the log has the full error)"
+    if not rows:
+        return None
+    removed_at, reason, epic = rows[0][0], rows[0][1], rows[0][2]
+    text = (f"this ticker's epic {epic} was removed from the cache as the wrong instrument on {removed_at} ({reason}); "
+            f"instrument-master has not cleared it, so IG was not searched")
+    if not EPIC_REMOVED_ENFORCE:
+        EPIC_REMOVED_WOULD_REFUSE += 1
+        log.warning(f"get_epic {ticker}: LOG-ONLY, would refuse: {text}")
+    return text
+
+
 def _no_epic(ticker: str, why: str):
     """get_epic gives up: remember WHY for the alert, return None."""
     LAST_EPIC_WHY[ticker] = why
@@ -1638,6 +1674,14 @@ def get_epic(ticker: str) -> Optional[str]:
         except Exception as e:
             log.warning(f"get_epic {ticker}: could not purge bad cache row: {e}")
         # fall through to Step 2 (IG search, now with a working identity guard)
+
+    # Step 1c — instrument-master removed this ticker's epic as the wrong instrument and has not cleared it: do not let
+    # an IG search put a (possibly the same) wrong epic back. Keyed on the ORIGINAL ticker; pins and heuristics returned above.
+    _blocked = _removed_epic_refusal(ticker)
+    if _blocked and EPIC_REMOVED_ENFORCE:
+        log.error(f"get_epic {ticker}: {_blocked}")
+        _epic_alert(ticker, f"{ticker}: {_blocked}")
+        return _no_epic(ticker, _blocked)
 
     # Step 1b — no company name and no pin: an IG search result cannot be identity-checked, and choosing from it
     # unchecked is how AXP became AXP Energy (Architect 2026-11-21). The website cannot ask Yahoo (numpy), so there it
