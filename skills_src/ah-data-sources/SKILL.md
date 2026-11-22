@@ -75,7 +75,9 @@ Two traps, both hit on 2026-09-20:
 
 1. **The snapshot's `name`** — populated for 1,773 of 1,773. `build_snapshot.py` resolves it once in the
    scanner (GitHub Actions) via `_load_name_cache()`/`_save_name_cache()`, which read and write BOTH the
-   durable `web_json_store` key `name_cache` and the local `hvf_web/name_cache.json`.
+   durable `web_json_store` key `name_cache` and the local `hvf_web/name_cache.json`. "Populated" is not "named": a name equal
+   to the ticker (or its bare symbol) is a placeholder (`instrument_name.is_placeholder_name`, the only definition);
+   the build re-looks it up every run, never caches it, and logs the unnamed tickers (2026-11-22: 114 of 2,097).
 2. **`instrument_name.company_name()`** — curated names, then the FX-pair rule, then a **per-process**
    `_NAME_CACHE` dict (instrument_name.py:29), then **yfinance**, then `epic_lookup`.
 

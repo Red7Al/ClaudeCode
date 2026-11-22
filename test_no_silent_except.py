@@ -36,7 +36,7 @@ BASELINE = {
     "db_pool.py": 5,
     "docs/_capture_guide_images.py": 1,
     "hvf_clean.py": 1,
-    "hvf_web/build_snapshot.py": 9,
+    "hvf_web/build_snapshot.py": 7,
     "hvf_web/order_bridge.py": 1,
     "hvf_web/scheduled_jobs.py": 1,
     "hvf_web/server.py": 35,

@@ -75,6 +75,20 @@ def _clean_ig(desc: str) -> str:
     return name.strip()
 
 
+def is_placeholder_name(name, ticker: str) -> bool:
+    """THE definition of 'no real name' (the only one): empty, the ticker itself, or the ticker's bare symbol
+    ('PH' for 'PH.L', 'USDJPY' for 'USDJPY=X', 'GDAXI' for '^GDAXI'), case-insensitive. A cached failed lookup
+    stored as the ticker is a placeholder, never a name."""
+    nm = str(name or "").strip().upper()
+    if not nm:
+        return True
+    tk = str(ticker or "").strip().upper()
+    bare = re.sub(r"\.[A-Z]{1,2}$", "", tk[1:] if tk.startswith("^") else tk)
+    if bare.endswith("=X"):
+        bare = bare[:-2]
+    return nm in (tk, bare)
+
+
 def _from_epic_lookup(ticker: str) -> str:
     """FALLBACK: the IG description from epic_lookup (instruments yfinance cannot name). Tries the
     ticker and, for UK names, the .L-stripped key. Best-effort — '' on any DB error."""
@@ -87,7 +101,7 @@ def _from_epic_lookup(ticker: str) -> str:
                 rows = conn.run("select description from epic_lookup where ticker = :t limit 1", t=k)
                 if rows and rows[0][0]:
                     nm = _clean_ig(rows[0][0])
-                    if nm and nm != ticker:
+                    if not is_placeholder_name(nm, ticker):
                         return nm
         finally:
             conn.close()
@@ -142,7 +156,7 @@ def scan_name(ticker: str) -> str:
         name = str((_srv._record(ticker) or {}).get("name") or "").strip()
     except Exception:
         return ""
-    return "" if name.upper() == ticker.upper() else name
+    return "" if is_placeholder_name(name, ticker) else name
 
 
 def company_name(ticker: str) -> str:
@@ -169,5 +183,7 @@ def company_name(ticker: str) -> str:
             name = ""
     if not name:
         name = _from_epic_lookup(ticker)
+    if is_placeholder_name(name, ticker):
+        name = ""                  # a placeholder is not a name: never returned, never cached
     _NAME_CACHE[ticker] = name
     return name

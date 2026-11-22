@@ -73,6 +73,25 @@ def _save_name_cache(names: dict) -> bool:
     return remote_ok or local_ok
 
 
+def _resolve_cached_name(tk, names, lookup, unnamed) -> tuple:
+    """(display name, cache changed). A cached placeholder (the ticker, from an old failed lookup) is not a hit:
+    it is looked up again. A failed or placeholder result is NEVER written to `names` (it would be kept for ever);
+    the ticker is shown instead and listed in `unnamed` with the cause."""
+    from instrument_name import is_placeholder_name
+    if not is_placeholder_name(names.get(tk), tk):
+        return names[tk], False
+    try:
+        nm = lookup(tk)
+    except Exception as e:
+        log.warning(f"name lookup failed for {tk}: {type(e).__name__}")
+        nm = ""
+    if is_placeholder_name(nm, tk):
+        unnamed.append(tk)
+        return tk, False
+    names[tk] = nm
+    return nm, True
+
+
 # Regional location for index tickers (user 2026-07-03: Indices by location — US, Western Europe,
 # Eastern Europe, Asia, and other). FX is its OWN location, separate from Indices.
 _INDEX_REGION = {
@@ -245,25 +264,20 @@ def build(markets=None, scan_results=None, progress_cb=None):
     log.info(f"{len(sig)} signals of {total} monitored instruments; building full-universe records ...")
     try:
         from instrument_name import company_name
-    except Exception:
-        company_name = lambda t: t
+    except Exception as e:
+        raise ImportError(f"cannot build names: instrument_name import failed: {type(e).__name__}: {e}") from e
 
     # Persistent name cache (user 2026-06-28: 'the name will not change each time so look up once'). The
     # first build resolves all ~424 names (slow, network-bound); every later refresh only looks up tickers
     # not already cached, so it's fast. New names are written back at the end.
     _names = _load_name_cache()
     _names_dirty = False
+    _unnamed = []                    # tickers with no real name this build (shown as the ticker, not cached)
 
     def _resolve_name(tk):
         nonlocal _names_dirty
-        if tk in _names and _names[tk]:
-            return _names[tk]
-        try:
-            nm = company_name(tk) or tk
-        except Exception:
-            nm = tk
-        _names[tk] = nm
-        _names_dirty = True
+        nm, changed = _resolve_cached_name(tk, _names, company_name, _unnamed)
+        _names_dirty = _names_dirty or changed
         return nm
 
     # Every monitored instrument gets a record (user 2026-06-28: 'see all items, toggle on/off if there
@@ -328,6 +342,7 @@ def build(markets=None, scan_results=None, progress_cb=None):
                     "h1_date", "h2_date", "h3_date", "l1_date", "l2_date", "l3_date", "current_price")},
             })
 
+    log.info(f"names: {len(_unnamed)} instruments have no name" + (f": {', '.join(_unnamed)}" if _unnamed else ""))
     if _names_dirty:
         try:
             if not _save_name_cache(_names):
